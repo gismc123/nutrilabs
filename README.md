@@ -422,6 +422,32 @@ ports:
 
 ---
 
+## AI Contributions
+
+NutriLabs was built with assistance from several AI models, each playing a different role throughout the project.
+
+### Claude by Anthropic
+**Best for:** Complex multi-file architecture, sustained reasoning across a large codebase, and instruction-following over many sequential steps.
+
+Claude was the primary coding assistant for this project. It designed and implemented all nine build phases end-to-end — from the Prisma schema and Express API through the full React frontend. Claude handled the hardest cross-cutting concerns: keeping the data model, API contracts, and UI in sync across 150+ files, writing Zod validation that matched the schema, wiring TanStack Query correctly throughout, and implementing nuanced features like the custody-aware day config system and the grocery deduplication engine.
+
+### Google Gemini
+**Best for:** Broad knowledge retrieval, explaining concepts, and researching integration options quickly.
+
+Gemini was used during the planning and research phase to evaluate API options, compare grocery pricing data sources, and think through the custody scheduling data model before any code was written. It was also helpful for cross-checking behavior of third-party APIs (Spoonacular, Kroger, Open Food Facts) without having to dig through their docs manually.
+
+### Ollama phi4:14b
+**Best for:** Fast local inference for structured tasks with a small context window — good at following tight formatting instructions.
+
+phi4:14b runs locally via Ollama and powers the in-app AI features at runtime. It handles the **AI Fill Week** feature — generating a full week of meal suggestions given the household profiles, dietary restrictions, and pantry staples. Its strength is producing consistently structured output (JSON meal slot assignments) quickly, without requiring any cloud API calls.
+
+### Ollama qwen2.5-coder:7b
+**Best for:** Code completion and boilerplate generation on lower-end hardware — efficient, code-focused, and fast.
+
+qwen2.5-coder was used during development for quick local code completions and boilerplate — things like generating repetitive route handler stubs, filling out Prisma query patterns, and scaffolding React component shells. Running entirely on local hardware with no latency to an external API made it useful for the fast iteration loops that come with frontend development.
+
+---
+
 ## License
 
 MIT — do whatever you want with it.
