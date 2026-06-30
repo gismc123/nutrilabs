@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#064e3b"/>
+    </linearGradient>
+    <linearGradient id="liq" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6ee7b7" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#34d399" stop-opacity="0.85"/>
+    </linearGradient>
+    <clipPath id="fc">
+      <path d="M242,104 L270,104 L284,130 L284,225 L412,420 L407,440 L394,456 L118,456 L105,440 L100,420 L228,225 L228,130 L228,112 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- Flask body (subtle white fill) -->
+  <polygon points="242,104 270,104 284,130 284,225 412,420 407,440 394,456 118,456 105,440 100,420 228,225 228,130 228,112"
+           fill="white" fill-opacity="0.08"/>
+
+  <!-- Flask outline -->
+  <polygon points="242,104 270,104 284,130 284,225 412,420 407,440 394,456 118,456 105,440 100,420 228,225 228,130 228,112"
+           fill="none" stroke="white" stroke-width="16" stroke-linejoin="round" stroke-linecap="round"/>
+
+  <!-- Liquid -->
+  <polygon points="175,305 337,305 412,420 407,440 394,456 118,456 105,440 100,420"
+           clip-path="url(#fc)" fill="url(#liq)"/>
+
+  <!-- Bubbles -->
+  <circle cx="183" cy="375" r="10" fill="white" fill-opacity="0.53"/>
+  <circle cx="220" cy="410" r="6"  fill="white" fill-opacity="0.43"/>
+  <circle cx="316" cy="365" r="8"  fill="white" fill-opacity="0.53"/>
+  <circle cx="282" cy="405" r="4"  fill="white" fill-opacity="0.37"/>
+
+  <!-- Three leaves (left, center, right) sprouting from flask mouth -->
+  <!-- Center leaf -->
+  <path d="M256,104 C237,74 237,40 256,24 C275,40 275,74 256,104Z" fill="white"/>
+  <!-- Left leaf (rotated -42°) -->
+  <path d="M256,104 C229,89 213,57 226,38 C240,20 265,50 256,104Z" fill="white"/>
+  <!-- Right leaf (rotated +42°) -->
+  <path d="M256,104 C283,89 299,57 286,38 C272,20 247,50 256,104Z" fill="white"/>
+</svg>

@@ -1,0 +1,290 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+enum RecipeSource {
+  USER
+  AI
+  SPOONACULAR
+}
+
+enum DayOfWeek {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
+
+enum HouseholdMode {
+  SOLO
+  DAD_MODE
+}
+
+enum GroceryCategory {
+  PRODUCE
+  PROTEIN
+  DAIRY
+  GRAINS
+  CANNED
+  FROZEN
+  MISC
+}
+
+enum WeekStartDay {
+  SUN
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+}
+
+enum PantryItemSource {
+  SCANNED
+  MANUAL
+}
+
+model User {
+  id                 Int                   @id @default(autoincrement())
+  email              String                @unique
+  passwordHash       String
+  displayName        String?
+  isActive           Boolean               @default(true)
+  deactivatedAt      DateTime?
+  scheduledPurgeAt   DateTime?
+  passwordChangedAt  DateTime?
+  createdAt          DateTime              @default(now())
+  profiles           Profile[]
+  mealPlans          MealPlan[]
+  eatingOutLogs      EatingOutLog[]
+  settings           AppSettings?
+  custodyTemplate    CustodyTemplate[]
+  pantryStaples      PantryStaple[]
+  pantryInventory    PantryInventoryItem[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+model Profile {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  name          String
+  age           Int?
+  avatarColor   String
+  isPlanner     Boolean  @default(false)
+  dietaryNotes  String?
+  foodDislikes  String?
+  calorieTarget Int?
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id])
+}
+
+model Recipe {
+  id              Int           @id @default(autoincrement())
+  name            String
+  description     String?
+  mealType        MealType
+  servings        Int           @default(1)
+  prepTimeMinutes Int?
+  costPerServing  Decimal?      @db.Decimal(8, 2)
+  calories        Int?
+  proteinG        Int?
+  carbsG          Int?
+  fatG            Int?
+  isKidFriendly   Boolean       @default(true)
+  tags            String[]
+  source          RecipeSource
+  instructions    String?
+  spoonacularId   Int?          @unique
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  ingredients     Ingredient[]
+  plannedMeals    PlannedMeal[]
+}
+
+model Ingredient {
+  id         Int      @id @default(autoincrement())
+  recipeId   Int
+  name       String
+  quantity   Decimal? @db.Decimal(10, 3)
+  unit       String?
+  isOptional Boolean  @default(false)
+  recipe     Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+}
+
+model MealPlan {
+  id            Int           @id @default(autoincrement())
+  userId        Int
+  weekStartDate DateTime      @db.Date
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  user          User          @relation(fields: [userId], references: [id])
+  plannedMeals  PlannedMeal[]
+  dayConfigs    DayConfig[]
+  groceryList   GroceryList?
+
+  @@unique([userId, weekStartDate])
+}
+
+model DayConfig {
+  id               Int           @id @default(autoincrement())
+  mealPlanId       Int
+  dayOfWeek        DayOfWeek
+  householdMode    HouseholdMode
+  activeProfileIds Int[]
+  mealPlan         MealPlan      @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([mealPlanId, dayOfWeek])
+}
+
+model PlannedMeal {
+  id         Int       @id @default(autoincrement())
+  mealPlanId Int
+  dayOfWeek  DayOfWeek
+  mealType   MealType
+  recipeId   Int?
+  eaten      Boolean   @default(false)
+  eatenAt    DateTime?
+  mealPlan   MealPlan  @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  recipe     Recipe?   @relation(fields: [recipeId], references: [id])
+
+  @@unique([mealPlanId, dayOfWeek, mealType])
+}
+
+model GroceryList {
+  id          Int           @id @default(autoincrement())
+  mealPlanId  Int           @unique
+  generatedAt DateTime      @default(now())
+  loggedSpend Int?
+  loggedStore String?
+  loggedAt    DateTime?
+  mealPlan    MealPlan      @relation(fields: [mealPlanId], references: [id])
+  items       GroceryItem[]
+}
+
+model GroceryItem {
+  id                    Int             @id @default(autoincrement())
+  groceryListId         Int
+  name                  String
+  quantity              Decimal?        @db.Decimal(10, 3)
+  unit                  String?
+  category              GroceryCategory
+  checked               Boolean         @default(false)
+  estimatedPriceWalmart Int?
+  estimatedPriceKroger  Int?
+  estimatedPriceAldi    Int?
+  isPantryStaple        Boolean         @default(false)
+  groceryList           GroceryList     @relation(fields: [groceryListId], references: [id], onDelete: Cascade)
+}
+
+model EatingOutLog {
+  id            Int           @id @default(autoincrement())
+  userId        Int
+  date          DateTime      @db.Date
+  mealType      MealType
+  placeName     String?
+  amount        Int
+  householdMode HouseholdMode
+  notes         String?
+  createdAt     DateTime      @default(now())
+  user          User          @relation(fields: [userId], references: [id])
+}
+
+model AppSettings {
+  id                 Int          @id @default(autoincrement())
+  userId             Int          @unique
+  weekStartDay       WeekStartDay @default(SUN)
+  weeklyBudget       Int          @default(12000)
+  eatingOutReference Int          @default(1200)
+  ollamaHost         String       @default("http://192.168.1.190:11434")
+  ollamaModel        String       @default("llama3")
+  krogerZip          String?
+  spoonacularApiKey  String?
+  usdaApiKey         String?
+  dateFormat         String       @default("MM/DD/YYYY")
+  currency           String       @default("USD")
+  smtpHost           String?
+  smtpPort           Int?         @default(587)
+  smtpUser           String?
+  smtpPassword       String?
+  smtpFromAddress    String?
+  smtpFromName       String       @default("NutriLabs")
+  appBaseUrl         String?
+  user               User         @relation(fields: [userId], references: [id])
+}
+
+model CustodyTemplate {
+  id                Int           @id @default(autoincrement())
+  userId            Int
+  dayOfWeek         DayOfWeek
+  householdMode     HouseholdMode
+  isAlternatingWeek Boolean       @default(false)
+  user              User          @relation(fields: [userId], references: [id])
+
+  @@unique([userId, dayOfWeek, isAlternatingWeek])
+}
+
+model PantryStaple {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  name      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, name])
+}
+
+model RecipeImportCache {
+  id            Int      @id @default(autoincrement())
+  spoonacularId Int      @unique
+  rawJson       String
+  fetchedAt     DateTime @default(now())
+}
+
+model PantryInventoryItem {
+  id               Int              @id @default(autoincrement())
+  userId           Int
+  name             String
+  brand            String?
+  barcode          String?
+  servingSize      String?
+  servingSizeG     Decimal?         @db.Decimal(8, 2)
+  calories         Int?
+  proteinG         Decimal?         @db.Decimal(6, 2)
+  carbsG           Decimal?         @db.Decimal(6, 2)
+  fatG             Decimal?         @db.Decimal(6, 2)
+  ingredients      String?
+  imageUrl         String?
+  quantity         Decimal          @default(1) @db.Decimal(8, 2)
+  unit             String           @default("serving")
+  openFoodFactsId  String?
+  source           PantryItemSource
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  user             User             @relation(fields: [userId], references: [id])
+}
+
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+}
