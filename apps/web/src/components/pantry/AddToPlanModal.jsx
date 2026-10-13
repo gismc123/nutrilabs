@@ -36,6 +36,7 @@ export default function AddToPlanModal({ item, isOpen, onClose }) {
     onSuccess: () => {
       toast.success('Added to your plan');
       queryClient.invalidateQueries({ queryKey: ['mealplan-week'] });
+      queryClient.invalidateQueries({ queryKey: ['grocery-list'] });
       onClose();
     },
     onError: (err) => toast.error(err.message),

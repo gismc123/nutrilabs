@@ -4,10 +4,12 @@ import toast from 'react-hot-toast';
 import { IconCheck, IconX, IconLoader } from '@tabler/icons-react';
 import {
   getOllamaModels, testOllamaConnection,
-  testKrogerConnection, testSpoonacularConnection, testUsdaConnection,
+  testKrogerConnection, testSpoonacularConnection, testUsdaConnection, testMealDbConnection, getKrogerStores, getMeijerStores,
   getSpoonacularQuota, updateSettings, testSmtp,
 } from '../../api/client.js';
 import { useSettings } from '../../hooks/useSettings.js';
+import { useAuth } from '../../hooks/useAuth.js';
+import StorePicker from './StorePicker.jsx';
 
 const MASK = '••••••••';
 
@@ -28,6 +30,27 @@ function TestButton({ onClick, isPending, label = 'Test connection' }) {
       {isPending ? <IconLoader size={14} className="animate-spin" /> : null}
       {isPending ? 'Testing...' : label}
     </button>
+  );
+}
+
+const KEY_SOURCE_TEXT = {
+  settings: 'Using the key saved here.',
+  env: 'Using the key from .env (fallback). Enter a key here to override it.',
+  demo: "No key saved here or in .env — using USDA's shared DEMO_KEY (30 requests/hour, 50/day).",
+};
+
+function KeySource({ source, missingText, onRemove }) {
+  const text = KEY_SOURCE_TEXT[source] ?? missingText;
+  if (!text) return null;
+  return (
+    <p className={`text-xs ${source === 'settings' || source === 'env' ? 'text-primary-700' : 'text-accent-600'}`}>
+      {text}
+      {source === 'settings' && onRemove && (
+        <button type="button" onClick={onRemove} className="ml-2 text-neutral-500 underline hover:text-danger-600">
+          Remove saved key
+        </button>
+      )}
+    </p>
   );
 }
 
@@ -66,11 +89,13 @@ function MaskedInput({ value, isSet, placeholder, onChange, onBlur }) {
 
 export default function ConnectionsTab() {
   const { settings, updateSettings: saveSettings } = useSettings();
+  // Ollama and SMTP are server-wide and only the admin may change them.
+  const { user } = useAuth();
+  const isAdmin = !!user?.isAdmin;
   const saveTimer = useRef(null);
 
   const [ollamaHost, setOllamaHost] = useState('');
   const [ollamaModel, setOllamaModel] = useState('');
-  const [krogerZip, setKrogerZip] = useState('');
   const [spoonKey, setSpoonKey] = useState('');
   const [usdaKey, setUsdaKey] = useState('');
 
@@ -85,6 +110,7 @@ export default function ConnectionsTab() {
   const [ollamaStatus, setOllamaStatus] = useState(null);
   const [krogerStatus, setKrogerStatus] = useState(null);
   const [spoonStatus, setSpoonStatus] = useState(null);
+  const [mealDbStatus, setMealDbStatus] = useState(null);
   const [usdaStatus, setUsdaStatus] = useState(null);
   const [smtpStatus, setSmtpStatus] = useState(null);
 
@@ -92,7 +118,6 @@ export default function ConnectionsTab() {
     if (!settings) return;
     setOllamaHost(settings.ollamaHost ?? 'http://192.168.1.190:11434');
     setOllamaModel(settings.ollamaModel ?? '');
-    setKrogerZip(settings.krogerZip ?? '');
     setSmtpHost(settings.smtpHost ?? '');
     setSmtpPort(String(settings.smtpPort ?? 587));
     setSmtpUser(settings.smtpUser ?? '');
@@ -131,6 +156,12 @@ export default function ConnectionsTab() {
     onError: (err) => setSpoonStatus({ connected: false, message: err.message }),
   });
 
+  const mealDbTestMutation = useMutation({
+    mutationFn: testMealDbConnection,
+    onSuccess: (data) => setMealDbStatus(data),
+    onError: (err) => setMealDbStatus({ connected: false, message: err.message }),
+  });
+
   const usdaTestMutation = useMutation({
     mutationFn: () => testUsdaConnection(usdaKey ? { apiKey: usdaKey } : {}),
     onSuccess: (data) => setUsdaStatus(data),
@@ -154,6 +185,8 @@ export default function ConnectionsTab() {
 
   return (
     <div className="space-y-2">
+      {isAdmin ? (
+        <>
       <SectionDivider title="Ollama" />
       <div className="space-y-3">
         <div>
@@ -180,22 +213,61 @@ export default function ConnectionsTab() {
         <ConnectionStatus status={ollamaStatus} />
       </div>
 
+        </>
+      ) : (
+        <>
+          <SectionDivider title="AI (Ollama)" />
+          <p className="text-xs text-neutral-400">AI features use the server set up by this site&apos;s admin.</p>
+        </>
+      )}
+
       <SectionDivider title="Kroger API" />
       <div className="space-y-3">
         <p className="text-xs text-neutral-400">
           Optional. Enables real-time grocery pricing. Set <code className="bg-neutral-100 px-1 rounded">KROGER_CLIENT_ID</code> and <code className="bg-neutral-100 px-1 rounded">KROGER_CLIENT_SECRET</code> in your <code className="bg-neutral-100 px-1 rounded">.env</code> file.
         </p>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Zip code</label>
-          <input type="text" value={krogerZip} onChange={(e) => { setKrogerZip(e.target.value); debouncedSave({ krogerZip: e.target.value }); }}
-            placeholder="e.g. 90210" maxLength={10}
-            className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-600" />
-        </div>
+        <StorePicker
+          queryKey="kroger-stores"
+          fields={{ zip: 'krogerZip', radius: 'krogerRadiusMiles', id: 'krogerLocationId', name: 'krogerStoreName' }}
+          settings={settings}
+          saveSettings={saveSettings}
+          fetchStores={getKrogerStores}
+          enabled={!!settings?.krogerConfigured}
+          chainLabel="Kroger-family"
+        />
         <div className={`text-xs px-2 py-1 rounded-lg inline-block ${settings?.krogerConfigured ? 'bg-primary-50 text-primary-700' : 'bg-neutral-100 text-neutral-500'}`}>
           {settings?.krogerConfigured ? 'Credentials configured via environment' : 'Not configured'}
         </div>
         <TestButton onClick={() => krogerTestMutation.mutate()} isPending={krogerTestMutation.isPending} />
         <ConnectionStatus status={krogerStatus} />
+      </div>
+
+      <SectionDivider title="Meijer" />
+      <div className="space-y-3">
+        <p className="text-xs text-neutral-400">
+          Optional. Prices come from Meijer's product search for the store you pick. Finding stores uses the price service's
+          browser, so the first search for a ZIP can take up to a minute.
+        </p>
+        <StorePicker
+          queryKey="meijer-stores"
+          fields={{ zip: 'meijerZip', radius: 'meijerRadiusMiles', id: 'meijerStoreId', name: 'meijerStoreName' }}
+          settings={settings}
+          saveSettings={saveSettings}
+          fetchStores={getMeijerStores}
+          autoSearch={false}
+          allowAuto={false}
+          chainLabel="Meijer"
+          slowHint="looking up Meijer stores, this can take up to a minute…"
+        />
+      </div>
+
+      <SectionDivider title="TheMealDB" />
+      <div className="space-y-3">
+        <p className="text-xs text-neutral-400">
+          Free, no key needed. Powers recipe search under Recipes → Find recipes. Supporters of <span className="text-primary-600">themealdb.com</span> can set THEMEALDB_API_KEY in .env.
+        </p>
+        <TestButton onClick={() => mealDbTestMutation.mutate()} isPending={mealDbTestMutation.isPending} />
+        <ConnectionStatus status={mealDbStatus} />
       </div>
 
       <SectionDivider title="Spoonacular" />
@@ -204,11 +276,16 @@ export default function ConnectionsTab() {
         <div>
           <label className="block text-sm font-medium text-neutral-700 mb-1">API key</label>
           <MaskedInput
-            isSet={settings?.spoonacularConfigured}
-            placeholder="Enter API key"
+            isSet={!!settings?.spoonacularApiKey}
+            placeholder={settings?.spoonacularKeySource === 'env' ? 'Using .env key — enter a key to override' : 'Enter API key'}
             onChange={(val) => { setSpoonKey(val); debouncedSave({ spoonacularApiKey: val }); }}
           />
         </div>
+        <KeySource
+          source={settings?.spoonacularKeySource}
+          missingText="No key saved here or in .env — recipe search is disabled."
+          onRemove={() => saveSettings({ spoonacularApiKey: '' })}
+        />
         {quota && (
           <p className="text-xs text-neutral-400">{quota.used} of {quota.limit} searches used today</p>
         )}
@@ -219,20 +296,23 @@ export default function ConnectionsTab() {
       <SectionDivider title="USDA FoodData Central" />
       <div className="space-y-3">
         <p className="text-xs text-neutral-400">
-          Optional. Leave blank to use DEMO_KEY (30 req/hr, 50/day). Get a free key at <span className="text-primary-600">fdc.nal.usda.gov</span> for higher limits.
+          Optional. Uses the key saved here, then the .env key, then USDA's DEMO_KEY (30 req/hr, 50/day). Get a free key at <span className="text-primary-600">fdc.nal.usda.gov</span> for higher limits.
         </p>
         <div>
           <label className="block text-sm font-medium text-neutral-700 mb-1">API key (optional)</label>
           <MaskedInput
-            isSet={settings?.usdaConfigured && !!settings?.usdaApiKey}
-            placeholder="Leave blank to use DEMO_KEY"
+            isSet={!!settings?.usdaApiKey}
+            placeholder={settings?.usdaKeySource === 'env' ? 'Using .env key — enter a key to override' : 'Leave blank to use DEMO_KEY'}
             onChange={(val) => { setUsdaKey(val); debouncedSave({ usdaApiKey: val }); }}
           />
         </div>
+        <KeySource source={settings?.usdaKeySource} onRemove={() => saveSettings({ usdaApiKey: '' })} />
         <TestButton onClick={() => usdaTestMutation.mutate()} isPending={usdaTestMutation.isPending} />
         <ConnectionStatus status={usdaStatus} />
       </div>
 
+      {isAdmin && (
+        <>
       <SectionDivider title="Email / SMTP" />
       <div className="space-y-3">
         <p className="text-xs text-neutral-400">
@@ -291,6 +371,8 @@ export default function ConnectionsTab() {
         <TestButton onClick={() => smtpTestMutation.mutate()} isPending={smtpTestMutation.isPending} label="Test connection" />
         <ConnectionStatus status={smtpStatus} />
       </div>
+        </>
+      )}
     </div>
   );
 }

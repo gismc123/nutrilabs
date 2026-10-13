@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { IconRefresh, IconList, IconCurrencyDollar } from '@tabler/icons-react';
-import { generateGroceryList, getGroceryPrices } from '../../api/client.js';
+import { generateGroceryList, getStorePrices } from '../../api/client.js';
 import { useUiStore } from '../../store/uiStore.js';
 import LogSpendModal from './LogSpendModal.jsx';
 
-export default function ListToolbar({ mealPlanId, listId, hasCheckedItems, krogerConfigured }) {
+export default function ListToolbar({ mealPlanId, listId, hasCheckedItems, canRefreshPrices, pricesQueryKey }) {
   const queryClient = useQueryClient();
   const showConfirm = useUiStore((s) => s.showConfirm);
   const [spendOpen, setSpendOpen] = useState(false);
@@ -21,10 +21,11 @@ export default function ListToolbar({ mealPlanId, listId, hasCheckedItems, kroge
   });
 
   const pricesMutation = useMutation({
-    mutationFn: () => getGroceryPrices(listId),
-    onSuccess: () => {
-      toast.success('Kroger prices updated');
-      queryClient.invalidateQueries({ queryKey: ['grocery-list'] });
+    mutationFn: () => getStorePrices(listId, true),
+    onSuccess: (data) => {
+      queryClient.setQueryData(pricesQueryKey, data);
+      const live = data.retailers.filter((r) => r.method === 'api');
+      toast.success(live.map((r) => `${r.label}: ${r.pricedCount}/${r.itemCount}`).join(' · ') || 'Prices refreshed');
     },
     onError: (err) => toast.error(err.message),
   });
@@ -52,14 +53,14 @@ export default function ListToolbar({ mealPlanId, listId, hasCheckedItems, kroge
         {regenerateMutation.isPending ? 'Regenerating...' : 'Regenerate from plan'}
       </button>
 
-      {krogerConfigured && (
+      {canRefreshPrices && (
         <button
           onClick={() => pricesMutation.mutate()}
           disabled={pricesMutation.isPending}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-50 transition-colors"
         >
           <IconRefresh size={14} />
-          {pricesMutation.isPending ? 'Refreshing...' : 'Refresh Kroger prices'}
+          {pricesMutation.isPending ? 'Refreshing...' : 'Refresh prices'}
         </button>
       )}
 

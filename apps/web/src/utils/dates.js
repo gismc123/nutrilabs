@@ -31,6 +31,26 @@ export function formatDate(date, format = 'YYYY-MM-DD') {
     .replace('DD', day);
 }
 
+/** Parse 'YYYY-MM-DD' or an ISO timestamp as a UTC-midnight Date (no local-time shift). */
+export function parseIsoDate(value) {
+  return new Date(String(value).slice(0, 10) + 'T00:00:00.000Z');
+}
+
+/** Add days to a 'YYYY-MM-DD' string, returning 'YYYY-MM-DD'. */
+export function addDaysIso(dateStr, days) {
+  const d = parseIsoDate(dateStr);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+const UTC_DAY_ENUMS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+/** Day enums in display order for a week starting on `weekStart` (a UTC-midnight Date). */
+export function orderedWeekDays(weekStart) {
+  const first = weekStart ? weekStart.getUTCDay() : 1;
+  return Array.from({ length: 7 }, (_, i) => UTC_DAY_ENUMS[(first + i) % 7]);
+}
+
 export function dayEnumToLabel(dayEnum) {
   return DAY_NAMES[dayEnum] ?? dayEnum;
 }

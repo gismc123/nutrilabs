@@ -21,6 +21,7 @@ function MealCard({ mealPlanId, dayOfWeek, mealType, plannedMeal, householdMode 
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mealplan-week'] });
+      queryClient.invalidateQueries({ queryKey: ['grocery-list'] });
       queryClient.invalidateQueries({ queryKey: ['budget-week'] });
     },
     onError: (err) => toast.error(err.message),

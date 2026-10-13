@@ -4,14 +4,15 @@ import toast from 'react-hot-toast';
 import HouseholdBadge from '../ui/HouseholdBadge.jsx';
 import MealSlot from './MealSlot.jsx';
 import { updateMealPlanDayConfig } from '../../api/client.js';
+import { orderedWeekDays } from '../../utils/dates.js';
 
-const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 const DAY_SHORT = { MON: 'Mon', TUE: 'Tue', WED: 'Wed', THU: 'Thu', FRI: 'Fri', SAT: 'Sat', SUN: 'Sun' };
 const MEAL_TYPES = ['BREAKFAST', 'LUNCH', 'DINNER'];
 const MEAL_SHORT = { BREAKFAST: 'Breakfast', LUNCH: 'Lunch', DINNER: 'Dinner' };
 
 export default function WeekGrid({ mealPlanId, grid, weekStart, profiles = [] }) {
   const queryClient = useQueryClient();
+  const days = orderedWeekDays(weekStart);
 
   const toggleModeMutation = useMutation({
     mutationFn: ({ dayOfWeek, householdMode }) =>
@@ -28,7 +29,7 @@ export default function WeekGrid({ mealPlanId, grid, weekStart, profiles = [] })
       <div className="grid min-w-[700px]" style={{ gridTemplateColumns: `80px repeat(7, 1fr)` }}>
         {/* Header row */}
         <div />
-        {DAYS.map((day, idx) => {
+        {days.map((day, idx) => {
           const date = weekStart ? new Date(weekStart) : null;
           if (date) date.setUTCDate(date.getUTCDate() + idx);
           const dateNum = date ? date.getUTCDate() : null;
@@ -54,7 +55,7 @@ export default function WeekGrid({ mealPlanId, grid, weekStart, profiles = [] })
             <div className="pr-2 py-1 flex items-center">
               <span className="text-xs font-medium text-neutral-400">{MEAL_SHORT[mealType]}</span>
             </div>
-            {DAYS.map((day) => {
+            {days.map((day) => {
               const dayData = grid?.[day];
               const plannedMeal = dayData?.meals?.[mealType] ?? null;
 

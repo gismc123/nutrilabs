@@ -2,11 +2,12 @@ import { Router } from 'express';
 import prisma from '../lib/prisma.js';
 import { ollamaState } from '../lib/ollamaState.js';
 import { testConnection } from '../services/ollama.js';
+import { checkCredentials as checkKrogerCredentials } from '../services/kroger.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { getInstanceSettings } from '../lib/instanceSettings.js';
 
 const router = Router();
 
-const DEFAULT_OLLAMA_HOST = 'http://192.168.1.190:11434';
 const CACHE_TTL_MS = 60_000;
 
 router.get('/health', asyncHandler(async (req, res) => {
@@ -20,11 +21,13 @@ router.get('/health', asyncHandler(async (req, res) => {
   const stale = Date.now() - ollamaState.lastCheckedAt > CACHE_TTL_MS;
   if (stale) {
     // Fire-and-forget so health responds immediately
-    testConnection(DEFAULT_OLLAMA_HOST).then((result) => {
+    getInstanceSettings().then(({ ollamaHost }) => testConnection(ollamaHost)).then((result) => {
       ollamaState.connected = result.connected;
       ollamaState.lastCheckedAt = Date.now();
     }).catch(() => {});
   }
+
+  const krogerConnected = await checkKrogerCredentials();
 
   res.json({
     data: {
@@ -33,6 +36,7 @@ router.get('/health', asyncHandler(async (req, res) => {
       ollamaConnected: ollamaState.connected,
       spoonacularConnected: !!(process.env.SPOONACULAR_API_KEY),
       usdaConnected: true,
+      krogerConnected,
       version: '1.0.0',
     },
     error: null,

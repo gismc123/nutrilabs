@@ -4,6 +4,7 @@ import prisma from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { lookupBarcode, searchProduct } from '../services/openFoodFacts.js';
+import { visibleRecipes } from '../lib/access.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -77,21 +78,23 @@ router.post('/search', asyncHandler(async (req, res) => {
 
 // ── POST /api/pantry-inventory (manual add) ───────────────────────────────────
 
+const num = z.number().min(0).max(100000);
+
 const addItemSchema = z.object({
-  name: z.string().min(1),
-  brand: z.string().optional().nullable(),
-  barcode: z.string().optional().nullable(),
-  servingSize: z.string().optional().nullable(),
-  servingSizeG: z.number().optional().nullable(),
-  calories: z.number().int().optional().nullable(),
-  proteinG: z.number().optional().nullable(),
-  carbsG: z.number().optional().nullable(),
-  fatG: z.number().optional().nullable(),
-  ingredients: z.string().optional().nullable(),
-  imageUrl: z.string().optional().nullable(),
-  quantity: z.number().default(1),
-  unit: z.string().default('serving'),
-  openFoodFactsId: z.string().optional().nullable(),
+  name: z.string().trim().min(1).max(200),
+  brand: z.string().max(200).optional().nullable(),
+  barcode: z.string().max(64).optional().nullable(),
+  servingSize: z.string().max(100).optional().nullable(),
+  servingSizeG: num.optional().nullable(),
+  calories: z.number().int().min(0).max(100000).optional().nullable(),
+  proteinG: num.optional().nullable(),
+  carbsG: num.optional().nullable(),
+  fatG: num.optional().nullable(),
+  ingredients: z.string().max(5000).optional().nullable(),
+  imageUrl: z.string().max(1000).url().refine((v) => /^https?:\/\//i.test(v)).optional().nullable(),
+  quantity: num.default(1),
+  unit: z.string().max(40).default('serving'),
+  openFoodFactsId: z.string().max(64).optional().nullable(),
 });
 
 router.post('/', asyncHandler(async (req, res) => {
@@ -107,15 +110,21 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // ── PUT /api/pantry-inventory/:id ─────────────────────────────────────────────
 
+const updateItemSchema = addItemSchema
+  .pick({ name: true, brand: true, quantity: true, unit: true, servingSize: true, servingSizeG: true, calories: true, proteinG: true, carbsG: true, fatG: true })
+  .partial();
+
 router.put('/:id', asyncHandler(async (req, res) => {
   const id = parseInt(req.params.id);
   const existing = await prisma.pantryInventoryItem.findFirst({ where: { id, userId: req.user.userId } });
   if (!existing) {
     return res.status(404).json({ data: null, error: { message: 'Item not found', code: 'NOT_FOUND' } });
   }
-  const allowed = ['name', 'brand', 'quantity', 'unit', 'servingSize', 'servingSizeG', 'calories', 'proteinG', 'carbsG', 'fatG'];
-  const updates = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k)));
-  const item = await prisma.pantryInventoryItem.update({ where: { id }, data: updates });
+  const parsed = updateItemSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ data: null, error: { message: parsed.error.errors[0].message, code: 'VALIDATION_ERROR' } });
+  }
+  const item = await prisma.pantryInventoryItem.update({ where: { id }, data: parsed.data });
   res.json({ data: item, error: null });
 }));
 
@@ -157,8 +166,9 @@ router.post('/:id/add-to-plan', asyncHandler(async (req, res) => {
     return res.status(404).json({ data: null, error: { message: 'Meal plan not found', code: 'NOT_FOUND' } });
   }
 
+  // Reuse a recipe of the same name only if this user can see it.
   let recipe = await prisma.recipe.findFirst({
-    where: { name: { equals: item.name, mode: 'insensitive' } },
+    where: { name: { equals: item.name, mode: 'insensitive' }, ...visibleRecipes(req.user) },
   });
 
   if (!recipe) {
@@ -166,6 +176,7 @@ router.post('/:id/add-to-plan', asyncHandler(async (req, res) => {
       data: {
         name: item.name,
         description: item.brand || null,
+        userId: req.user.userId,
         mealType: 'SNACK',
         source: 'USER',
         isKidFriendly: true,

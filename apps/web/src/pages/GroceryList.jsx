@@ -1,37 +1,29 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { getMealPlanWeek, getGroceryList } from '../api/client.js';
+import { getMealPlanWeek, getGroceryList, getStorePrices } from '../api/client.js';
 import { formatDate } from '../utils/dates.js';
-import { useSettings } from '../hooks/useSettings.js';
 import ErrorBoundary from '../components/ui/ErrorBoundary.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { SkeletonCard } from '../components/ui/Skeleton.jsx';
 import StoreSelector from '../components/grocery/StoreSelector.jsx';
 import GroceryListBody from '../components/grocery/GroceryListBody.jsx';
 import ListToolbar from '../components/grocery/ListToolbar.jsx';
-import KrogerPriceStatus from '../components/grocery/KrogerPriceStatus.jsx';
+import PriceStatus from '../components/grocery/PriceStatus.jsx';
 
-const STORES = ['Walmart', 'Kroger', 'Aldi'];
-
-function defaultStore(itemsByCategory) {
-  const allItems = Object.values(itemsByCategory).flat();
-  const totals = {
-    Walmart: allItems.reduce((s, i) => s + (i.estimatedPriceWalmart ?? 0), 0),
-    Kroger: allItems.reduce((s, i) => s + (i.estimatedPriceKroger ?? 0), 0),
-    Aldi: allItems.reduce((s, i) => s + (i.estimatedPriceAldi ?? 0), 0),
-  };
-  const withData = STORES.filter((s) => totals[s] > 0);
-  if (withData.length === 0) return 'Walmart';
-  return withData.reduce((best, s) => (totals[s] < totals[best] ? s : best));
+// Default tab: the store that priced the most items, cheapest among those.
+function defaultStore(retailers) {
+  if (!retailers.length) return null;
+  const maxPriced = Math.max(...retailers.map((r) => r.pricedCount));
+  return retailers
+    .filter((r) => r.pricedCount === maxPriced)
+    .reduce((a, b) => (b.totalCents < a.totalCents ? b : a)).id;
 }
 
 function GroceryListContent() {
   const navigate = useNavigate();
-  const { settings } = useSettings();
   const today = formatDate(new Date());
-  const [activeStore, setActiveStore] = useState('Walmart');
-  const [excludedStaples, setExcludedStaples] = useState(null);
+  const [activeStore, setActiveStore] = useState(null);
 
   const { data: weekPlan, isLoading: loadingPlan } = useQuery({
     queryKey: ['mealplan-week', today],
@@ -46,17 +38,23 @@ function GroceryListContent() {
     enabled: !!mealPlanId,
   });
 
-  useEffect(() => {
-    if (groceryData?.excludedStaples) {
-      setExcludedStaples(groceryData.excludedStaples);
-    }
-  }, [groceryData?.excludedStaples]);
+  const listId = groceryData?.id;
+  const { data: storePrices, isLoading: loadingPrices, error: pricesError } = useQuery({
+    // generatedAt changes whenever the list is rebuilt from the plan.
+    queryKey: ['store-prices', listId, groceryData?.generatedAt],
+    queryFn: () => getStorePrices(listId),
+    enabled: !!listId,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const retailers = storePrices?.retailers ?? [];
+  const prices = storePrices?.prices ?? {};
 
   useEffect(() => {
-    if (groceryData?.itemsByCategory) {
-      setActiveStore(defaultStore(groceryData.itemsByCategory));
+    if (retailers.length && !retailers.some((r) => r.id === activeStore)) {
+      setActiveStore(defaultStore(retailers));
     }
-  }, [groceryData?.id]);
+  }, [storePrices]);
 
   useEffect(() => {
     document.title = 'NutriLabs — Grocery List';
@@ -87,7 +85,9 @@ function GroceryListContent() {
   const itemsByCategory = groceryData?.itemsByCategory ?? {};
   const allItems = Object.values(itemsByCategory).flat();
   const hasCheckedItems = allItems.some((i) => i.checked);
-  const krogerConfigured = !!settings?.krogerConfigured;
+  const excludedStaples = groceryData?.excludedStaples ?? [];
+  const missingIngredients = groceryData?.mealsWithoutIngredients ?? [];
+  const activeRetailer = retailers.find((r) => r.id === activeStore) ?? null;
 
   return (
     <div className="space-y-4">
@@ -99,20 +99,24 @@ function GroceryListContent() {
         mealPlanId={mealPlanId}
         listId={groceryData?.id}
         hasCheckedItems={hasCheckedItems}
-        krogerConfigured={krogerConfigured}
+        canRefreshPrices={retailers.some((r) => r.method === 'api')}
+        pricesQueryKey={['store-prices', listId, groceryData?.generatedAt]}
       />
 
-      <StoreSelector
-        items={allItems}
-        activeStore={activeStore}
-        onStoreChange={setActiveStore}
-      />
+      <StoreSelector retailers={retailers} activeStore={activeStore} onStoreChange={setActiveStore} />
 
-      <KrogerPriceStatus
-        krogerConfigured={krogerConfigured}
-        krogerPricesAvailable={groceryData?.krogerPricesAvailable ?? false}
-        generatedAt={groceryData?.generatedAt}
-      />
+      <PriceStatus retailer={activeRetailer} isLoading={loadingPrices} error={pricesError} />
+
+      {missingIngredients.length > 0 && (
+        <div className="bg-accent-50 border border-accent-100 rounded-xl px-4 py-3 text-sm text-accent-900">
+          <p className="font-medium">
+            {missingIngredients.length} planned {missingIngredients.length === 1 ? 'meal has' : 'meals have'} no ingredients and {missingIngredients.length === 1 ? "isn't" : "aren't"} on this list:
+          </p>
+          <p className="mt-1 text-xs">
+            {missingIngredients.map((m) => `${m.recipeName} (${m.dayOfWeek} ${m.mealType.toLowerCase()})`).join(' · ')}
+          </p>
+        </div>
+      )}
 
       {allItems.length === 0 ? (
         <EmptyState
@@ -125,6 +129,7 @@ function GroceryListContent() {
           itemsByCategory={itemsByCategory}
           listId={groceryData?.id}
           activeStore={activeStore}
+          prices={prices}
           excludedStaples={excludedStaples}
         />
       )}

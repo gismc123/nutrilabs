@@ -45,6 +45,10 @@ export const deleteRecipe = (id) => api.delete(`/recipes/${id}`);
 export const searchExternalRecipes = (params) => api.get('/recipes/search/external', { params });
 export const getExternalRecipe = (spoonacularId) => api.get(`/recipes/search/external/${spoonacularId}`);
 export const importRecipe = (spoonacularId) => api.post(`/recipes/import/${spoonacularId}`);
+export const getMealDbFilters = () => api.get('/recipes/mealdb/filters');
+export const searchMealDb = (params) => api.get('/recipes/mealdb/search', { params });
+export const getMealDbRecipe = (mealDbId) => api.get(`/recipes/mealdb/${mealDbId}`);
+export const importMealDbRecipe = (mealDbId, data) => api.post(`/recipes/mealdb/${mealDbId}/import`, data);
 
 // ── Meal Plans ────────────────────────────────────────────────────────────────
 export const getMealPlanWeek = (date) => api.get(`/mealplans/week/${date}`);
@@ -78,6 +82,11 @@ export const getBudgetInsight = () => api.get('/budget/insight');
 // ── Nutrition ─────────────────────────────────────────────────────────────────
 export const searchIngredient = (name) => api.get('/nutrition/ingredient', { params: { name } });
 export const getNutritionByFdcId = (fdcId) => api.get(`/nutrition/fdcid/${fdcId}`);
+export const calculateMacros = (data) => api.post('/nutrition/calculate', data);
+export const getFoodCandidates = (name, q) => api.get('/nutrition/candidates', { params: { name, q } });
+export const chooseFoodMatch = (name, fdcId) => api.put('/nutrition/matches', { name, fdcId });
+export const setFoodUnitGrams = (name, unit, grams) => api.put('/nutrition/matches/grams', { name, unit, grams });
+export const resetFoodMatch = (name) => api.delete('/nutrition/matches', { params: { name } });
 
 // ── Grocery ───────────────────────────────────────────────────────────────────
 export const getGroceryList = (mealPlanId) => api.get(`/grocery/${mealPlanId}`);
@@ -86,6 +95,8 @@ export const updateGroceryItem = (listId, itemId, data) => api.put(`/grocery/${l
 export const deleteGroceryItem = (listId, itemId) => api.delete(`/grocery/${listId}/item/${itemId}`);
 export const logGrocerySpend = (listId, data) => api.post(`/grocery/${listId}/log-spend`, data);
 export const getGroceryPrices = (listId) => api.get(`/grocery/${listId}/prices`);
+export const getStorePrices = (listId, refresh = false) =>
+  api.get(`/grocery/${listId}/store-prices`, { params: refresh ? { refresh: 1 } : {}, timeout: 180_000 });
 
 // ── Budget ────────────────────────────────────────────────────────────────────
 export const getBudgetSummary = () => api.get('/budget/summary');
@@ -103,7 +114,10 @@ export const getSpoonacularQuota = () => api.get('/recipes/spoonacular-quota');
 
 // ── Test connections ──────────────────────────────────────────────────────────
 export const testKrogerConnection = () => api.post('/settings/test-kroger');
+export const getKrogerStores = (params) => api.get('/settings/kroger/stores', { params });
+export const getMeijerStores = (params) => api.get('/settings/meijer/stores', { params, timeout: 180_000 });
 export const testSpoonacularConnection = (data) => api.post('/settings/test-spoonacular', data);
+export const testMealDbConnection = () => api.post('/settings/test-mealdb');
 export const testUsdaConnection = (data) => api.post('/settings/test-usda', data);
 
 // ── Password ──────────────────────────────────────────────────────────────────

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { register, createProfile, updateSettings, testOllamaConnection } from '../../api/client.js';
+import { register, createProfile } from '../../api/client.js';
 
-const TOTAL_STEPS = 3;
+// The AI (Ollama) host is set once for the whole server by the admin, so new
+// accounts only set up their login and household.
+const TOTAL_STEPS = 2;
 
 function StepIndicator({ step }) {
   return (
@@ -179,57 +181,6 @@ function Step2Household({ userData, onNext }) {
   );
 }
 
-function Step3Ollama({ onFinish }) {
-  const [host, setHost] = useState('http://192.168.1.190:11434');
-  const [testResult, setTestResult] = useState(null);
-
-  const testMutation = useMutation({
-    mutationFn: testOllamaConnection,
-    onSuccess: (data) => setTestResult(data),
-    onError: (err) => setTestResult({ connected: false, message: err.message }),
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: (data) => updateSettings(data),
-    onSuccess: () => onFinish(),
-    onError: (err) => toast.error(err.message),
-  });
-
-  return (
-    <div>
-      <h2 className="text-2xl font-bold text-neutral-900 mb-1">Connect to Ollama</h2>
-      <p className="text-sm text-neutral-500 mb-6">
-        Optional — enables AI meal suggestions and spending insights on your local network.
-      </p>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Ollama host URL</label>
-          <input type="url" value={host} onChange={(e) => setHost(e.target.value)}
-            className="w-full px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-600" />
-        </div>
-        <button onClick={() => testMutation.mutate()} disabled={testMutation.isPending}
-          className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-50 transition-colors">
-          {testMutation.isPending ? 'Testing…' : 'Test connection'}
-        </button>
-        {testResult && (
-          <p className={`text-sm ${testResult.connected ? 'text-primary-600' : 'text-neutral-500'}`}>
-            {testResult.connected ? `✓ ${testResult.message || 'Connected'}` : `Couldn't connect — ${testResult.message}`}
-          </p>
-        )}
-        <div className="flex gap-3 pt-2">
-          <button onClick={() => saveMutation.mutate({ ollamaHost: host })} disabled={saveMutation.isPending}
-            className="flex-1 py-3 text-sm font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors">
-            {saveMutation.isPending ? 'Saving…' : 'Finish'}
-          </button>
-          <button onClick={onFinish} className="px-4 py-3 text-sm font-medium text-neutral-500 hover:text-neutral-700">
-            Skip for now
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function RegisterForm({ onComplete }) {
   const queryClient = useQueryClient();
   const [step, setStep] = useState(1);
@@ -247,8 +198,7 @@ export default function RegisterForm({ onComplete }) {
 
   const steps = [
     <Step1Account key={1} onNext={handleStep1Done} />,
-    <Step2Household key={2} userData={userData} onNext={() => setStep(3)} />,
-    <Step3Ollama key={3} onFinish={handleFinish} />,
+    <Step2Household key={2} userData={userData} onNext={handleFinish} />,
   ];
 
   return (

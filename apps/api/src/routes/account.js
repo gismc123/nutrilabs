@@ -1,27 +1,22 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, setSessionCookie, clearSessionCookie } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { sendPasswordResetEmail, testSmtpConnection } from '../services/mailer.js';
+import { limits, hashToken, normalizeEmail } from '../lib/security.js';
+import { getInstanceSettings } from '../lib/instanceSettings.js';
 
 const router = Router();
 
-const COOKIE_OPTS = {
-  httpOnly: true,
-  sameSite: 'strict',
-  maxAge: 30 * 24 * 60 * 60 * 1000,
-};
+// bcrypt only reads the first 72 bytes; the cap also bounds hashing cost.
+export const passwordSchema = z.string().min(8, 'Password must be at least 8 characters').max(128, 'Password must be at most 128 characters');
 
-function signToken(user) {
-  return jwt.sign(
-    { userId: user.id, email: user.email },
-    process.env.JWT_SECRET,
-    { expiresIn: '30d' }
-  );
+/** Case-insensitive lookup (older accounts may have been stored with capitals). */
+export function findUserByEmail(email) {
+  return prisma.user.findFirst({ where: { email: { equals: normalizeEmail(email), mode: 'insensitive' } } });
 }
 
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
@@ -32,16 +27,17 @@ const PANTRY_STAPLES = [
   'baking powder', 'baking soda', 'vanilla extract', 'cinnamon',
 ];
 
-async function createUserWithDefaults({ email, passwordHash, displayName }) {
+async function createUserWithDefaults({ email, passwordHash, displayName, isAdmin = false }) {
   const user = await prisma.user.create({
     data: {
       email,
       passwordHash,
       displayName: displayName || null,
       isActive: true,
+      isAdmin,
       settings: { create: {} },
     },
-    select: { id: true, email: true, displayName: true, createdAt: true },
+    select: { id: true, email: true, displayName: true, isAdmin: true, createdAt: true },
   });
 
   await prisma.profile.create({
@@ -72,13 +68,16 @@ async function createUserWithDefaults({ email, passwordHash, displayName }) {
 // ── POST /api/account/register ────────────────────────────────────────────────
 
 const registerSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-  confirmPassword: z.string(),
-  displayName: z.string().min(2).max(50),
+  email: z.string().email().max(254),
+  password: passwordSchema,
+  confirmPassword: z.string().max(128),
+  displayName: z.string().trim().min(2).max(50),
 });
 
-router.post('/register', asyncHandler(async (req, res) => {
+router.post('/register', limits.register, asyncHandler(async (req, res) => {
+  if (process.env.ALLOW_REGISTRATION === 'false') {
+    return res.status(403).json({ data: null, error: { message: 'Registration is closed on this server', code: 'REGISTRATION_CLOSED' } });
+  }
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ data: null, error: { message: parsed.error.errors[0].message, code: 'VALIDATION_ERROR' } });
@@ -88,58 +87,49 @@ router.post('/register', asyncHandler(async (req, res) => {
     return res.status(400).json({ data: null, error: { message: 'Passwords do not match', code: 'PASSWORD_MISMATCH' } });
   }
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await findUserByEmail(email);
   if (existing) {
     return res.status(409).json({ data: null, error: { message: 'Email already in use', code: 'EMAIL_TAKEN' } });
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  const user = await createUserWithDefaults({ email, passwordHash, displayName });
+  const user = await createUserWithDefaults({ email: normalizeEmail(email), passwordHash, displayName });
 
-  const token = signToken(user);
-  res.cookie('auth_token', token, { ...COOKIE_OPTS, secure: process.env.NODE_ENV === 'production' });
-  res.status(201).json({ data: { user, token, setupRequired: true }, error: null });
+  setSessionCookie(req, res, user);
+  res.status(201).json({ data: { user, setupRequired: true }, error: null });
 }));
 
 // ── POST /api/account/forgot-password ─────────────────────────────────────────
 
-const forgotSchema = z.object({ email: z.string().email() });
+const forgotSchema = z.object({ email: z.string().email().max(254) });
 
-router.post('/forgot-password', asyncHandler(async (req, res) => {
+router.post('/forgot-password', limits.passwordReset, limits.passwordResetByEmail, asyncHandler(async (req, res) => {
   const parsed = forgotSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.json({ data: { message: 'If an account exists with that email, a reset link has been sent.' }, error: null });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: parsed.data.email },
-    include: { settings: true },
-  });
+  const user = await findUserByEmail(parsed.data.email);
 
   if (user && user.isActive) {
     await prisma.passwordResetToken.deleteMany({
       where: { userId: user.id, usedAt: null },
     });
 
+    // Only the hash is stored; the token itself exists only in the email.
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
     await prisma.passwordResetToken.create({
-      data: { userId: user.id, token, expiresAt },
+      data: { userId: user.id, tokenHash: hashToken(token), expiresAt },
     });
 
-    let smtpSettings = user.settings;
-    if (!smtpSettings?.smtpHost) {
-      const firstAdmin = await prisma.appSettings.findFirst({
-        where: { smtpHost: { not: null } },
-      });
-      smtpSettings = firstAdmin || smtpSettings;
-    }
+    // Instance SMTP and base URL only (.env or the admin's settings) — never a
+    // regular user's, who could otherwise point reset links at their own server.
+    const instance = await getInstanceSettings();
+    const resetLink = `${instance.appBaseUrl.replace(/\/+$/, '')}/reset-password?token=${token}`;
 
-    const baseUrl = smtpSettings?.appBaseUrl || process.env.APP_BASE_URL || 'http://localhost:1042';
-    const resetLink = `${baseUrl}/reset-password?token=${token}`;
-
-    const result = await sendPasswordResetEmail(user.email, resetLink, smtpSettings || {});
+    const result = await sendPasswordResetEmail(user.email, resetLink, instance);
     if (!result.success) {
       console.error('[mailer] Failed to send reset email:', result.error);
     }
@@ -151,12 +141,12 @@ router.post('/forgot-password', asyncHandler(async (req, res) => {
 // ── POST /api/account/reset-password ──────────────────────────────────────────
 
 const resetPasswordSchema = z.object({
-  token: z.string().min(1),
-  newPassword: z.string().min(8),
-  confirmPassword: z.string(),
+  token: z.string().min(1).max(128),
+  newPassword: passwordSchema,
+  confirmPassword: z.string().max(128),
 });
 
-router.post('/reset-password', asyncHandler(async (req, res) => {
+router.post('/reset-password', limits.passwordReset, asyncHandler(async (req, res) => {
   const parsed = resetPasswordSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ data: null, error: { message: parsed.error.errors[0].message, code: 'VALIDATION_ERROR' } });
@@ -167,7 +157,7 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
     return res.status(400).json({ data: null, error: { message: 'Passwords do not match', code: 'PASSWORD_MISMATCH' } });
   }
 
-  const resetToken = await prisma.passwordResetToken.findUnique({ where: { token } });
+  const resetToken = await prisma.passwordResetToken.findUnique({ where: { tokenHash: hashToken(token) } });
   if (!resetToken) {
     return res.status(400).json({ data: null, error: { message: 'Invalid or expired reset link', code: 'TOKEN_INVALID' } });
   }
@@ -184,7 +174,8 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
   await prisma.$transaction([
     prisma.user.update({
       where: { id: resetToken.userId },
-      data: { passwordHash, passwordChangedAt: now },
+      // Signs out every existing session (a second's slack so a login right after still works).
+      data: { passwordHash, passwordChangedAt: new Date(now.getTime() - 1000) },
     }),
     prisma.passwordResetToken.update({
       where: { id: resetToken.id },
@@ -198,11 +189,11 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
 // ── POST /api/account/deactivate ──────────────────────────────────────────────
 
 const deactivateSchema = z.object({
-  password: z.string().min(1),
-  confirmPhrase: z.string(),
+  password: z.string().min(1).max(128),
+  confirmPhrase: z.string().max(100),
 });
 
-router.post('/deactivate', requireAuth, asyncHandler(async (req, res) => {
+router.post('/deactivate', requireAuth, limits.loginByIp, asyncHandler(async (req, res) => {
   const parsed = deactivateSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ data: null, error: { message: parsed.error.errors[0].message, code: 'VALIDATION_ERROR' } });
@@ -225,19 +216,19 @@ router.post('/deactivate', requireAuth, asyncHandler(async (req, res) => {
     data: { isActive: false, deactivatedAt: now, scheduledPurgeAt: purgeAt },
   });
 
-  res.clearCookie('auth_token');
+  clearSessionCookie(req, res);
   res.json({ data: { message: 'Account deactivated. You have 30 days to reactivate.' }, error: null });
 }));
 
 // ── GET /api/account/reactivate ───────────────────────────────────────────────
 
-router.get('/reactivate', asyncHandler(async (req, res) => {
+router.get('/reactivate', limits.passwordReset, asyncHandler(async (req, res) => {
   const { token } = req.query;
-  if (!token) {
+  if (typeof token !== 'string' || !token || token.length > 128) {
     return res.redirect('/login');
   }
 
-  const resetToken = await prisma.passwordResetToken.findUnique({ where: { token } });
+  const resetToken = await prisma.passwordResetToken.findUnique({ where: { tokenHash: hashToken(token) } });
   if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
     return res.redirect('/login?error=invalid_reactivation');
   }
@@ -258,15 +249,17 @@ router.get('/reactivate', asyncHandler(async (req, res) => {
 
 // ── POST /api/account/smtp-test ───────────────────────────────────────────────
 
-router.post('/smtp-test', requireAuth, asyncHandler(async (req, res) => {
-  const settings = await prisma.appSettings.findUnique({ where: { userId: req.user.userId } });
+// Admin only: it makes the server open a connection to the given host.
+router.post('/smtp-test', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const instance = await getInstanceSettings();
+  const body = req.body ?? {};
   const smtpSettings = {
-    smtpHost: req.body.smtpHost || settings?.smtpHost,
-    smtpPort: req.body.smtpPort || settings?.smtpPort,
-    smtpUser: req.body.smtpUser || settings?.smtpUser,
-    smtpPassword: req.body.smtpPassword || settings?.smtpPassword,
-    smtpFromAddress: req.body.smtpFromAddress || settings?.smtpFromAddress,
-    smtpFromName: req.body.smtpFromName || settings?.smtpFromName,
+    smtpHost: body.smtpHost || instance.smtpHost,
+    smtpPort: Number(body.smtpPort) || instance.smtpPort,
+    smtpUser: body.smtpUser || instance.smtpUser,
+    smtpPassword: body.smtpPassword || instance.smtpPassword,
+    smtpFromAddress: body.smtpFromAddress || instance.smtpFromAddress,
+    smtpFromName: body.smtpFromName || instance.smtpFromName,
   };
   const result = await testSmtpConnection(smtpSettings);
   res.json({ data: result, error: null });

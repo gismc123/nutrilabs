@@ -32,7 +32,8 @@ export default function AISuggestPanel() {
         costPerServing: suggestion.estimatedCostPerServing ?? null,
         isKidFriendly: suggestion.isKidFriendly ?? true,
         tags: [],
-        ingredients: [],
+        ingredients: suggestion.ingredients ?? [],
+        source: 'AI',
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipes'] });

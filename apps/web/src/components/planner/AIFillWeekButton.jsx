@@ -68,13 +68,15 @@ export default function AIFillWeekButton({ mealPlanId }) {
             costPerServing: s.estimatedCostPerServing ?? null,
             isKidFriendly: s.isKidFriendly ?? true,
             tags: [],
-            ingredients: [],
+            ingredients: s.ingredients ?? [],
+            source: 'AI',
           }).then((recipe) => ({ dayOfWeek: s.dayOfWeek, mealType: s.mealType, recipeId: recipe.id }))
         )
       );
 
       await batchUpdateMealPlanMeals(mealPlanId, resolved);
       queryClient.invalidateQueries({ queryKey: ['mealplan-week'] });
+      queryClient.invalidateQueries({ queryKey: ['grocery-list'] });
       queryClient.invalidateQueries({ queryKey: ['recipes'] });
       toast.success(`Week filled with ${resolved.length} AI meals`);
     } catch (err) {

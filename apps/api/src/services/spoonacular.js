@@ -15,6 +15,13 @@ function parseQuotaHeaders(headers) {
   if (!isNaN(request)) quota.pointsUsedByRequest = request;
 }
 
+// Spoonacular signals bad keys and exhausted quota with HTTP status codes.
+function apiError(res, data) {
+  if (res.status === 401) return { error: true, code: 'SPOONACULAR_INVALID_KEY', message: 'Spoonacular rejected the API key' };
+  if (res.status === 402) return { error: true, code: 'SPOONACULAR_QUOTA_EXCEEDED', message: data?.message ?? 'Spoonacular daily quota reached' };
+  return { error: true, code: 'SPOONACULAR_ERROR', message: data?.message ?? `Spoonacular returned HTTP ${res.status}` };
+}
+
 export function getLastQuota() {
   return { ...quota };
 }
@@ -38,6 +45,7 @@ export async function searchRecipes(params, apiKey) {
   const res = await fetch(url.toString());
   parseQuotaHeaders(res.headers);
   const data = await res.json();
+  if (!res.ok) return apiError(res, data);
 
   const results = (data.results ?? []).map((r) => {
     const nutrients = r.nutrition?.nutrients ?? [];
@@ -77,6 +85,7 @@ export async function getRecipeDetail(spoonacularId, apiKey) {
   const res = await fetch(url);
   parseQuotaHeaders(res.headers);
   const data = await res.json();
+  if (!res.ok) return apiError(res, data); // never cache an error response as a recipe
   const rawJson = JSON.stringify(data);
 
   await prisma.recipeImportCache.upsert({

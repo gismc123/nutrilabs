@@ -18,6 +18,7 @@ enum RecipeSource {
   USER
   AI
   SPOONACULAR
+  THEMEALDB
 }
 
 enum DayOfWeek {
@@ -69,7 +70,11 @@ model User {
   deactivatedAt      DateTime?
   scheduledPurgeAt   DateTime?
   passwordChangedAt  DateTime?
+  // Instance admin: edits the shared recipe library and instance-wide settings
+  // (Ollama host, SMTP). The account created by first-run setup.
+  isAdmin            Boolean               @default(false)
   createdAt          DateTime              @default(now())
+  recipes            Recipe[]
   profiles           Profile[]
   mealPlans          MealPlan[]
   eatingOutLogs      EatingOutLog[]
@@ -110,11 +115,19 @@ model Recipe {
   tags            String[]
   source          RecipeSource
   instructions    String?
-  spoonacularId   Int?          @unique
+  spoonacularId   Int?
+  mealDbId        Int?
+  // Owner. Null = shared library recipe: readable by everyone, editable by admins.
+  userId          Int?
+  user            User?         @relation(fields: [userId], references: [id])
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   ingredients     Ingredient[]
   plannedMeals    PlannedMeal[]
+
+  @@unique([userId, spoonacularId])
+  @@unique([userId, mealDbId])
+  @@index([userId])
 }
 
 model Ingredient {
@@ -170,6 +183,7 @@ model GroceryList {
   id          Int           @id @default(autoincrement())
   mealPlanId  Int           @unique
   generatedAt DateTime      @default(now())
+  sourceHash  String?
   loggedSpend Int?
   loggedStore String?
   loggedAt    DateTime?
@@ -181,6 +195,7 @@ model GroceryItem {
   id                    Int             @id @default(autoincrement())
   groceryListId         Int
   name                  String
+  normalizedName        String?
   quantity              Decimal?        @db.Decimal(10, 3)
   unit                  String?
   category              GroceryCategory
@@ -214,6 +229,13 @@ model AppSettings {
   ollamaHost         String       @default("http://192.168.1.190:11434")
   ollamaModel        String       @default("llama3")
   krogerZip          String?
+  krogerRadiusMiles  Int          @default(25)
+  krogerLocationId   String?
+  krogerStoreName    String?
+  meijerZip          String?
+  meijerRadiusMiles  Int          @default(25)
+  meijerStoreId      String?
+  meijerStoreName    String?
   spoonacularApiKey  String?
   usdaApiKey         String?
   dateFormat         String       @default("MM/DD/YYYY")
@@ -282,9 +304,33 @@ model PantryInventoryItem {
 model PasswordResetToken {
   id        Int       @id @default(autoincrement())
   userId    Int
-  token     String    @unique
+  // SHA-256 of the emailed token; the token itself is never stored.
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime  @default(now())
   user      User      @relation(fields: [userId], references: [id])
+}
+
+// USDA food per ingredient name (matchKey). userId 0 rows cache automatic picks for
+// everyone; a user's corrections from the macro calculator live in their own rows.
+model FoodMatch {
+  key            String
+  // 0 = the shared automatic match; a user id = that user's own correction.
+  userId         Int      @default(0)
+  fdcId          Int?
+  description    String?
+  dataType       String?
+  calories       Float?
+  proteinG       Float?
+  carbsG         Float?
+  fatG           Float?
+  portions       Json     @default("[]")
+  unitGrams      Json     @default("{}")
+  skip           Boolean  @default(false)
+  isUserChoice   Boolean  @default(false)
+  matcherVersion Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  @@id([key, userId])
 }

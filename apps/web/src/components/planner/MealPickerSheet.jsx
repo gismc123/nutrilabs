@@ -149,7 +149,7 @@ function AISuggestTab({ mealPlanId, dayOfWeek, mealType, onClose }) {
         costPerServing: suggestion.estimatedCostPerServing ?? null,
         isKidFriendly: suggestion.isKidFriendly ?? true,
         tags: [],
-        ingredients: [],
+        ingredients: suggestion.ingredients ?? [],
         source: 'AI',
       });
       if (assign) {
@@ -159,6 +159,7 @@ function AISuggestTab({ mealPlanId, dayOfWeek, mealType, onClose }) {
     },
     onSuccess: (_, { assign }) => {
       queryClient.invalidateQueries({ queryKey: ['mealplan-week'] });
+      queryClient.invalidateQueries({ queryKey: ['grocery-list'] });
       queryClient.invalidateQueries({ queryKey: ['recipes'] });
       toast.success(assign ? 'Recipe added to plan' : 'Recipe saved to library');
       if (assign) onClose();
@@ -255,6 +256,7 @@ export default function MealPickerSheet({ isOpen, onClose, mealPlanId, dayOfWeek
     mutationFn: (recipeId) => updateMealPlanMeals(mealPlanId, { dayOfWeek, mealType, recipeId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mealplan-week'] });
+      queryClient.invalidateQueries({ queryKey: ['grocery-list'] });
       toast.success('Recipe added to plan');
       onClose();
     },

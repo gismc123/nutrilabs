@@ -5,7 +5,6 @@ import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useUiStore } from '../../store/uiStore.js';
 import AIFillWeekButton from './AIFillWeekButton.jsx';
 import { copyMealPlan, clearMealPlanMeals } from '../../api/client.js';
-import { formatDate } from '../../utils/dates.js';
 
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -32,6 +31,7 @@ export default function WeekNav({
     mutationFn: () => copyMealPlan(mealPlanId, prevMealPlanId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mealplan-week'] });
+      queryClient.invalidateQueries({ queryKey: ['grocery-list'] });
       toast.success('Last week copied');
     },
     onError: (err) => toast.error(err.message),
@@ -41,6 +41,7 @@ export default function WeekNav({
     mutationFn: () => clearMealPlanMeals(mealPlanId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mealplan-week'] });
+      queryClient.invalidateQueries({ queryKey: ['grocery-list'] });
       toast.success('Week cleared');
     },
     onError: (err) => toast.error(err.message),
@@ -76,7 +77,7 @@ export default function WeekNav({
           type="date"
           className="sr-only"
           onChange={handleDateChange}
-          value={weekStart ? formatDate(new Date(weekStart)) : ''}
+          value={weekStart ? weekStart.toISOString().slice(0, 10) : ''}
         />
 
         <button onClick={onNext} className="p-1.5 rounded-lg hover:bg-neutral-100 text-neutral-600 transition-colors">

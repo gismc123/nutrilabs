@@ -4,14 +4,18 @@ import toast from 'react-hot-toast';
 import { updateGroceryItem, deleteGroceryItem, addPantryItem } from '../../api/client.js';
 import { centsToDisplay } from '../../utils/currency.js';
 import { useUiStore } from '../../store/uiStore.js';
+import { safeUrl } from '../../utils/safeUrl.js';
 
-const PRICE_KEYS = {
-  Walmart: 'estimatedPriceWalmart',
-  Kroger: 'estimatedPriceKroger',
-  Aldi: 'estimatedPriceAldi',
+const STATUS_TEXT = {
+  no_match: 'no match',
+  not_fetched: 'not priced yet',
+  paused: 'paused',
+  blocked: 'blocked',
+  error: 'error',
+  no_store: 'no store set',
 };
 
-export default function GroceryItemRow({ item, listId, activeStore, onDeleted }) {
+export default function GroceryItemRow({ item, listId, quote, onDeleted }) {
   const queryClient = useQueryClient();
   const showConfirm = useUiStore((s) => s.showConfirm);
   const [actionMenu, setActionMenu] = useState(false);
@@ -34,11 +38,14 @@ export default function GroceryItemRow({ item, listId, activeStore, onDeleted })
 
   const pantryMutation = useMutation({
     mutationFn: () => addPantryItem({ name: item.name }),
-    onSuccess: () => toast.success(`"${item.name}" added to pantry staples`),
+    onSuccess: () => {
+      toast.success(`"${item.name}" added to pantry staples`);
+      queryClient.invalidateQueries({ queryKey: ['grocery-list'] });
+    },
     onError: (err) => toast.error(err.message),
   });
 
-  const price = item[PRICE_KEYS[activeStore]];
+  const priced = quote?.status === 'ok';
 
   const handlePointerDown = () => {
     pressTimer.current = setTimeout(() => setActionMenu(true), 300);
@@ -82,9 +89,26 @@ export default function GroceryItemRow({ item, listId, activeStore, onDeleted })
               {item.quantity != null ? Number(item.quantity) : ''}{item.unit ? ` ${item.unit}` : ''}
             </span>
           )}
+          {priced && (
+            <span className="block text-[11px] text-neutral-400 truncate" title={quote.product}>
+              {quote.product}{quote.size && !quote.product.includes(quote.size) ? ` · ${quote.size}` : ''}
+              {quote.unitPrice ? ` · ${quote.unitPrice}` : ''}
+            </span>
+          )}
         </div>
-        <span className="text-sm font-medium text-neutral-600 flex-shrink-0">
-          {price != null ? centsToDisplay(price) : <span className="text-neutral-300">—</span>}
+        <span className="text-sm font-medium text-neutral-600 flex-shrink-0 text-right">
+          {priced ? (
+            <>
+              {safeUrl(quote.url) ? (
+                <a href={safeUrl(quote.url)} target="_blank" rel="noopener noreferrer" className="hover:text-primary-600" onClick={(e) => e.stopPropagation()}>
+                  {centsToDisplay(Math.round(quote.price * 100))}
+                </a>
+              ) : centsToDisplay(Math.round(quote.price * 100))}
+              {quote.onSale && <span className="block text-[10px] font-semibold text-primary-600">SALE</span>}
+            </>
+          ) : (
+            <span className="text-xs text-neutral-300">{quote ? STATUS_TEXT[quote.status] ?? '—' : '—'}</span>
+          )}
         </span>
       </div>
 

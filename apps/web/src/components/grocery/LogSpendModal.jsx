@@ -5,12 +5,12 @@ import BottomSheet from '../ui/BottomSheet.jsx';
 import { logGrocerySpend } from '../../api/client.js';
 import { formatDate } from '../../utils/dates.js';
 
-const STORES = ['Walmart', 'Kroger', 'Aldi', 'Other'];
+const STORES = ['Kroger', 'Meijer', 'ALDI', "Sam's Club", 'Walmart', 'Other'];
 
 export default function LogSpendModal({ isOpen, onClose, listId }) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState('');
-  const [store, setStore] = useState('Walmart');
+  const [store, setStore] = useState('Kroger');
   const [date, setDate] = useState(formatDate(new Date()));
 
   const mutation = useMutation({
@@ -22,7 +22,7 @@ export default function LogSpendModal({ isOpen, onClose, listId }) {
       queryClient.invalidateQueries({ queryKey: ['budget-weekly'] });
       onClose();
       setAmount('');
-      setStore('Walmart');
+      setStore('Kroger');
       setDate(formatDate(new Date()));
     },
     onError: (err) => toast.error(err.message),

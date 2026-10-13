@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { IconPlus } from '@tabler/icons-react';
 import { getRecipes } from '../api/client.js';
-import { useHealth } from '../hooks/useHealth.js';
+import { useSettings } from '../hooks/useSettings.js';
 import ErrorBoundary from '../components/ui/ErrorBoundary.jsx';
 import { SkeletonGrid } from '../components/ui/Skeleton.jsx';
 import RecipeLibraryHeader from '../components/recipes/RecipeLibraryHeader.jsx';
@@ -11,6 +11,7 @@ import RecipeDetailModal from '../components/recipes/RecipeDetailModal.jsx';
 import RecipeForm from '../components/recipes/RecipeForm.jsx';
 import AISuggestPanel from '../components/recipes/AISuggestPanel.jsx';
 import ExternalRecipeSearch from '../components/recipes/ExternalRecipeSearch.jsx';
+import MealDbSearch from '../components/recipes/MealDbSearch.jsx';
 
 const MEAL_TYPE_FILTERS = new Set(['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK']);
 
@@ -113,10 +114,41 @@ function MyLibraryTab({ recipes, isLoading }) {
 
 const TABS = ['My library', 'Find recipes'];
 
+const SOURCES = [
+  { id: 'mealdb', label: 'TheMealDB (free)' },
+  { id: 'spoonacular', label: 'Spoonacular' },
+];
+
+function FindRecipesTab({ spoonacularConfigured }) {
+  const [source, setSource] = useState('mealdb');
+  const active = spoonacularConfigured ? source : 'mealdb';
+
+  return (
+    <div className="space-y-4">
+      {spoonacularConfigured && (
+        <div className="inline-flex p-0.5 bg-neutral-100 rounded-lg">
+          {SOURCES.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setSource(s.id)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                active === s.id ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {active === 'mealdb' ? <MealDbSearch /> : <ExternalRecipeSearch />}
+    </div>
+  );
+}
+
 export default function RecipeLibrary() {
   useEffect(() => { document.title = 'NutriLabs — Recipe Library'; }, []);
   const [activeTab, setActiveTab] = useState(0);
-  const { health } = useHealth();
+  const { settings } = useSettings();
 
   const { data: recipes = [], isLoading } = useQuery({
     queryKey: ['recipes'],
@@ -124,13 +156,11 @@ export default function RecipeLibrary() {
     staleTime: 2 * 60 * 1000,
   });
 
-  const tabs = health?.spoonacularConnected ? TABS : TABS.slice(0, 1);
-
   return (
     <ErrorBoundary>
       <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
         <div className="flex gap-1 border-b border-neutral-100">
-          {tabs.map((tab, i) => (
+          {TABS.map((tab, i) => (
             <button
               key={tab}
               onClick={() => setActiveTab(i)}
@@ -149,8 +179,8 @@ export default function RecipeLibrary() {
           <MyLibraryTab recipes={recipes} isLoading={isLoading} />
         )}
 
-        {activeTab === 1 && health?.spoonacularConnected && (
-          <ExternalRecipeSearch />
+        {activeTab === 1 && (
+          <FindRecipesTab spoonacularConfigured={!!settings?.spoonacularConfigured} />
         )}
       </div>
     </ErrorBoundary>

@@ -3,22 +3,11 @@ import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { recipesVisible } from '../lib/access.js';
+import { DAYS, getWeekStart, createPlanForWeek } from '../lib/weekPlans.js';
 
 const router = Router();
 router.use(requireAuth);
-
-const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-const MEAL_TYPES = ['BREAKFAST', 'LUNCH', 'DINNER'];
-const DAY_TO_NUM = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
-
-function getWeekStart(dateStr, weekStartDay) {
-  const d = new Date(dateStr + 'T00:00:00.000Z');
-  const startNum = DAY_TO_NUM[weekStartDay] ?? 0;
-  const currentDay = d.getUTCDay();
-  const diff = (currentDay - startNum + 7) % 7;
-  d.setUTCDate(d.getUTCDate() - diff);
-  return d;
-}
 
 function buildGrid(dayConfigs, plannedMeals) {
   const grid = {};
@@ -94,27 +83,7 @@ router.get('/week/:date', asyncHandler(async (req, res) => {
   let wasCreated = false;
   if (!plan) {
     wasCreated = true;
-    const template = await prisma.custodyTemplate.findMany({ where: { userId, isAlternatingWeek: false } });
-
-    plan = await prisma.$transaction(async (tx) => {
-      const mp = await tx.mealPlan.create({ data: { userId, weekStartDate: weekStart } });
-
-      const dayCfgs = DAYS.map((day) => {
-        const tpl = template.find((t) => t.dayOfWeek === day);
-        return { mealPlanId: mp.id, dayOfWeek: day, householdMode: tpl?.householdMode ?? 'SOLO', activeProfileIds: [] };
-      });
-      await tx.dayConfig.createMany({ data: dayCfgs });
-
-      const meals = DAYS.flatMap((day) =>
-        MEAL_TYPES.map((mealType) => ({ mealPlanId: mp.id, dayOfWeek: day, mealType }))
-      );
-      await tx.plannedMeal.createMany({ data: meals });
-
-      return tx.mealPlan.findUnique({
-        where: { id: mp.id },
-        include: { dayConfigs: true, plannedMeals: { include: { recipe: true } } },
-      });
-    });
+    plan = await prisma.$transaction((tx) => createPlanForWeek(tx, userId, weekStart));
   }
 
   res.json({
@@ -200,14 +169,18 @@ router.put('/:id/meals', asyncHandler(async (req, res) => {
   }
 
   const { dayOfWeek, mealType, recipeId, eaten, eatenAt } = parsed.data;
+  if (!(await recipesVisible(req.user, [recipeId]))) {
+    return res.status(404).json({ data: null, error: { message: 'Recipe not found', code: 'NOT_FOUND' } });
+  }
   const data = {};
   if (recipeId !== undefined) data.recipeId = recipeId;
   if (eaten !== undefined) data.eaten = eaten;
   if (eatenAt !== undefined) data.eatenAt = eatenAt ? new Date(eatenAt) : null;
 
-  const meal = await prisma.plannedMeal.update({
+  const meal = await prisma.plannedMeal.upsert({
     where: { mealPlanId_dayOfWeek_mealType: { mealPlanId, dayOfWeek, mealType } },
-    data,
+    update: data,
+    create: { mealPlanId, dayOfWeek, mealType, ...data },
     include: { recipe: true },
   });
   res.json({ data: meal, error: null });
@@ -233,9 +206,10 @@ router.post('/:id/copy-from/:sourceId', asyncHandler(async (req, res) => {
 
   await Promise.all(
     source.plannedMeals.map((meal) =>
-      prisma.plannedMeal.update({
+      prisma.plannedMeal.upsert({
         where: { mealPlanId_dayOfWeek_mealType: { mealPlanId: targetId, dayOfWeek: meal.dayOfWeek, mealType: meal.mealType } },
-        data: { recipeId: meal.recipeId },
+        update: { recipeId: meal.recipeId },
+        create: { mealPlanId: targetId, dayOfWeek: meal.dayOfWeek, mealType: meal.mealType, recipeId: meal.recipeId },
       })
     )
   );
@@ -271,7 +245,7 @@ const batchMealSchema = z.object({
       recipeId: z.number().int().nullable().optional(),
       eaten: z.boolean().optional(),
     })
-  ).min(1),
+  ).min(1).max(60),
 });
 
 // POST /api/mealplans/:id/meals/batch — batch assign multiple meals
@@ -290,14 +264,19 @@ router.post('/:id/meals/batch', asyncHandler(async (req, res) => {
     });
   }
 
+  if (!(await recipesVisible(req.user, parsed.data.meals.map((m) => m.recipeId)))) {
+    return res.status(404).json({ data: null, error: { message: 'Recipe not found', code: 'NOT_FOUND' } });
+  }
+
   await Promise.all(
     parsed.data.meals.map(({ dayOfWeek, mealType, recipeId, eaten }) => {
       const data = {};
       if (recipeId !== undefined) data.recipeId = recipeId;
       if (eaten !== undefined) data.eaten = eaten;
-      return prisma.plannedMeal.update({
+      return prisma.plannedMeal.upsert({
         where: { mealPlanId_dayOfWeek_mealType: { mealPlanId, dayOfWeek, mealType } },
-        data,
+        update: data,
+        create: { mealPlanId, dayOfWeek, mealType, ...data },
       });
     })
   );

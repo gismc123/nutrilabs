@@ -179,9 +179,11 @@ That's it — you're running.
 | `SMTP_FROM_ADDRESS` | — | From address for outgoing email |
 | `SMTP_FROM_NAME` | `NutriLabs` | Display name for outgoing email |
 | `APP_BASE_URL` | — | Public URL of the app, used in password reset links |
-| `NODE_ENV` | — | Set to `production` to enable `Secure` flag on auth cookies |
+| `BASE_URL` | `http://localhost:1042` | Public URL of the app (CORS origin; fallback for reset links) |
+| `ALLOW_REGISTRATION` | `true` | Set to `false` to stop new sign-ups on a public instance |
+| `THEMEALDB_API_KEY` | `1` (free key) | TheMealDB supporter key, if you have one |
 
-All optional integrations can also be configured (and overridden) through **Settings → Connections** in the UI. UI settings take precedence over environment variables when both are set.
+API keys (Spoonacular, USDA) can be set per user in **Settings → Connections**. Server-wide settings — the Ollama host/model, SMTP and the app base URL — can only be changed there by the **admin** (the account created by the setup wizard); the admin's values take precedence over these environment variables.
 
 ---
 
@@ -208,7 +210,7 @@ Password reset requires SMTP configuration. Two easy options:
 | [Resend](https://resend.com) *(recommended)* | `smtp.resend.com` | 587 | `resend` | Your Resend API key — free tier is 100 emails/day |
 | Gmail app password | `smtp.gmail.com` | 587 | Your Gmail address | 16-character app password from [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) |
 
-Configure in **Settings → Connections → Email**. Set **App base URL** to your public URL (e.g. `http://localhost:1042`) so reset links are routable. Use the **Test connection** button to verify before relying on it.
+The admin configures this in **Settings → Connections → Email** (or via the `SMTP_*` variables). Set **App base URL** to your public URL (e.g. `http://localhost:1042`) so reset links are routable. Use the **Test connection** button to verify before relying on it.
 
 ---
 
@@ -216,7 +218,7 @@ Configure in **Settings → Connections → Email**. Set **App base URL** to you
 
 Use a reverse proxy (nginx, Caddy, Traefik) or a Cloudflare tunnel to route your domain to `localhost:1042`. No configuration changes are needed inside the app — it is fully domain-agnostic.
 
-If you use HTTPS, set `NODE_ENV=production` in `.env` so auth cookies are marked `Secure`.
+Auth cookies are marked `Secure` automatically when the request arrived over HTTPS (nginx passes the tunnel's `X-Forwarded-Proto` through), so plain-http LAN access on `:1042` keeps working.
 
 Example Cloudflare tunnel config:
 ```yaml
@@ -225,6 +227,21 @@ ingress:
     service: http://localhost:1042
   - service: http_status:404
 ```
+
+---
+
+## Security
+
+NutriLabs is built to be exposed publicly behind HTTPS:
+
+- **Accounts:** bcrypt password hashing; HttpOnly, SameSite=Strict session cookies; sessions end on password change or reset; reset tokens are random, single-use, expire in 1 hour and are stored only as SHA-256 hashes; login timing doesn't reveal which emails are registered.
+- **Rate limits:** login (per IP and per email), registration, password reset, AI and external-API calls, plus a global per-IP ceiling.
+- **Data isolation:** every user's plans, lists, pantry, settings and macro corrections are scoped to them. Recipes are private to their owner; the starter library is shared read-only and only the admin can edit it.
+- **Admin-only server settings:** the Ollama host and SMTP server can only be set by the admin, so other users can't point the server at internal addresses (SSRF) or intercept reset emails.
+- **Headers:** CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, a strict referrer policy and a permissions policy are set by nginx; server versions are hidden.
+- **Infrastructure:** PostgreSQL listens on `127.0.0.1` only; the API runs as an unprivileged user; the pricer feed isn't served publicly; internal error details never reach clients; the API won't start without a `JWT_SECRET` of at least 32 characters.
+
+For a public deployment also consider Cloudflare's WAF / bot protection, and `ALLOW_REGISTRATION=false` once everyone you want has an account.
 
 ---
 

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { IconPlus, IconTrash, IconSearch } from '@tabler/icons-react';
 import BottomSheet from '../ui/BottomSheet.jsx';
+import MacroCalculator from './MacroCalculator.jsx';
 import { createRecipe, updateRecipe, estimateMacros, searchIngredient } from '../../api/client.js';
 import { useHealth } from '../../hooks/useHealth.js';
 
@@ -77,13 +78,13 @@ function IngredientRow({ ing, idx, onChange, onRemove }) {
       {nutritionPopover && (
         <div className="absolute z-10 left-0 mt-1 bg-white border border-neutral-200 rounded-lg shadow-lg p-3 text-xs space-y-1 min-w-[200px]">
           <div className="flex items-center justify-between">
-            <span className="font-semibold text-neutral-800">{nutritionPopover.name} (per 100g)</span>
+            <span className="font-semibold text-neutral-800">{nutritionPopover.description} (per 100g)</span>
             <button onClick={() => setNutritionPopover(null)} className="text-neutral-400 hover:text-neutral-700">×</button>
           </div>
           {nutritionPopover.calories != null && <div>Calories: {Math.round(nutritionPopover.calories)}</div>}
-          {nutritionPopover.protein != null && <div>Protein: {Math.round(nutritionPopover.protein)}g</div>}
-          {nutritionPopover.carbs != null && <div>Carbs: {Math.round(nutritionPopover.carbs)}g</div>}
-          {nutritionPopover.fat != null && <div>Fat: {Math.round(nutritionPopover.fat)}g</div>}
+          {nutritionPopover.proteinG != null && <div>Protein: {Math.round(nutritionPopover.proteinG)}g</div>}
+          {nutritionPopover.carbsG != null && <div>Carbs: {Math.round(nutritionPopover.carbsG)}g</div>}
+          {nutritionPopover.fatG != null && <div>Fat: {Math.round(nutritionPopover.fatG)}g</div>}
         </div>
       )}
     </div>
@@ -164,6 +165,7 @@ export default function RecipeForm({ isOpen, onClose, recipe = null }) {
     mutationFn: (data) => isEdit ? updateRecipe(recipe.id, data) : createRecipe(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      queryClient.invalidateQueries({ queryKey: ['grocery-list'] });
       if (isEdit) queryClient.invalidateQueries({ queryKey: ['recipe', recipe.id] });
       toast.success(isEdit ? 'Recipe updated' : 'Recipe created');
       onClose();
@@ -214,7 +216,11 @@ export default function RecipeForm({ isOpen, onClose, recipe = null }) {
 
     setEstimating(true);
     try {
-      const result = await estimateMacros({ recipeName: form.name, ingredients: namedIngredients });
+      const result = await estimateMacros({
+        recipeName: form.name,
+        ingredients: namedIngredients,
+        servings: parseInt(form.servings) || 1,
+      });
       setForm((f) => ({
         ...f,
         calories: result.calories ?? f.calories,
@@ -419,7 +425,7 @@ export default function RecipeForm({ isOpen, onClose, recipe = null }) {
                 disabled={estimating}
                 className="text-xs text-primary-600 hover:text-primary-700 font-medium disabled:opacity-50"
               >
-                {estimating ? 'Estimating...' : 'Estimate with AI'}
+                {estimating ? 'Estimating...' : 'Quick AI estimate'}
               </button>
             ) : (
               <span className="text-xs text-neutral-400">AI unavailable</span>
@@ -443,6 +449,15 @@ export default function RecipeForm({ isOpen, onClose, recipe = null }) {
                 />
               </div>
             ))}
+          </div>
+          <div className="mt-3">
+            <MacroCalculator
+              ingredients={form.ingredients}
+              servings={form.servings}
+              recipeName={form.name}
+              ollamaConnected={!!health?.ollamaConnected}
+              onApply={(m) => setForm((f) => ({ ...f, calories: m.calories, proteinG: m.proteinG, carbsG: m.carbsG, fatG: m.fatG }))}
+            />
           </div>
         </div>
 

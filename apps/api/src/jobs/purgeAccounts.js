@@ -28,11 +28,18 @@ async function purgeExpiredAccounts() {
           await tx.dayConfig.deleteMany({ where: { mealPlanId: mp.id } });
         }
         await tx.mealPlan.deleteMany({ where: { userId: user.id } });
+        // Private recipes go too (the FK would otherwise turn them into shared ones).
+        const ownRecipes = await tx.recipe.findMany({ where: { userId: user.id }, select: { id: true } });
+        const recipeIds = ownRecipes.map((r) => r.id);
+        await tx.plannedMeal.updateMany({ where: { recipeId: { in: recipeIds } }, data: { recipeId: null } });
+        await tx.ingredient.deleteMany({ where: { recipeId: { in: recipeIds } } });
+        await tx.recipe.deleteMany({ where: { id: { in: recipeIds } } });
+        await tx.foodMatch.deleteMany({ where: { userId: user.id } });
         await tx.profile.deleteMany({ where: { userId: user.id } });
         await tx.appSettings.deleteMany({ where: { userId: user.id } });
         await tx.user.delete({ where: { id: user.id } });
       });
-      console.log(`[purge] Hard-deleted account id=${user.id} email=${user.email}`);
+      console.log(`[purge] Hard-deleted account id=${user.id}`);
     } catch (err) {
       console.error(`[purge] Failed to purge user id=${user.id}:`, err.message);
     }

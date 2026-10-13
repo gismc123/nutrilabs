@@ -1,20 +1,21 @@
+// Internal error details never reach clients: messages can contain SQL, file
+// paths or upstream responses. They are logged server-side instead.
 export function errorHandler(err, req, res, next) {
-  const isDev = process.env.NODE_ENV !== 'production';
+  if (res.headersSent) return next(err);
 
-  if (isDev) {
-    console.error(err);
-  } else {
-    console.error(`[${new Date().toISOString()}] ${err.message}`);
+  // Body-parser errors (malformed JSON, oversized payload) are the client's fault.
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ data: null, error: { message: 'Malformed JSON body', code: 'BAD_REQUEST' } });
+  }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ data: null, error: { message: 'Request body too large', code: 'PAYLOAD_TOO_LARGE' } });
   }
 
-  const status = err.statusCode ?? 500;
-  res.status(status).json({
+  console.error(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}:`, err.stack || err.message);
+
+  res.status(500).json({
     data: null,
-    error: {
-      message: isDev ? err.message : 'An unexpected error occurred',
-      code: err.code ?? 'INTERNAL_ERROR',
-      ...(isDev && { stack: err.stack }),
-    },
+    error: { message: 'An unexpected error occurred', code: 'INTERNAL_ERROR' },
   });
 }
 

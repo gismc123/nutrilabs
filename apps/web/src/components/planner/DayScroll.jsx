@@ -3,16 +3,18 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { updateMealPlanDayConfig } from '../../api/client.js';
 import MealSlot from './MealSlot.jsx';
+import { orderedWeekDays } from '../../utils/dates.js';
 
-const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 const DAY_SHORT = { MON: 'Mo', TUE: 'Tu', WED: 'We', THU: 'Th', FRI: 'Fr', SAT: 'Sa', SUN: 'Su' };
 const MEAL_TYPES = ['BREAKFAST', 'LUNCH', 'DINNER'];
 const MEAL_LABELS = { BREAKFAST: 'Breakfast', LUNCH: 'Lunch', DINNER: 'Dinner' };
 
 const MODE_DOT = { SOLO: 'bg-neutral-300', DAD_MODE: 'bg-accent-400' };
 
-export default function DayScroll({ mealPlanId, grid }) {
-  const [selectedDay, setSelectedDay] = useState(DAYS[0]);
+export default function DayScroll({ mealPlanId, grid, weekStart }) {
+  const days = orderedWeekDays(weekStart);
+  const [pickedDay, setSelectedDay] = useState(null);
+  const selectedDay = pickedDay ?? days[0];
   const queryClient = useQueryClient();
 
   const toggleModeMutation = useMutation({
@@ -32,7 +34,7 @@ export default function DayScroll({ mealPlanId, grid }) {
     <div className="space-y-4">
       {/* Day strip */}
       <div className="flex gap-1 overflow-x-auto pb-1">
-        {DAYS.map((day) => {
+        {days.map((day) => {
           const mode = grid?.[day]?.householdMode ?? 'SOLO';
           const isSelected = day === selectedDay;
           return (

@@ -1,0 +1,12 @@
+{
+  "name": "@nutrilabs/pricer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone grocery price lookup: Kroger (official API), Meijer (search API), Aldi and Sam's Club (HeadlessX, scheduled and throttled).",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "cli": "node src/cli.js",
+    "test": "node --test test/"
+  }
+}

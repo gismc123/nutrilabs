@@ -30,6 +30,7 @@ function AddToPlanPicker({ recipeId, onClose }) {
     mutationFn: () => updateMealPlanMeals(weekPlan?.id, { dayOfWeek: day, mealType, recipeId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mealplan-week'] });
+      queryClient.invalidateQueries({ queryKey: ['grocery-list'] });
       toast.success('Added to plan');
       onClose();
     },
@@ -191,12 +192,19 @@ export default function RecipeDetailModal({ recipe: recipeSummary, isOpen, onClo
               ))}
             </div>
 
+            {recipe.editable !== false && [recipe.calories, recipe.proteinG, recipe.carbsG, recipe.fatG].every((v) => v == null) && recipe.ingredients?.length > 0 && (
+              <p className="text-xs text-neutral-400 -mt-2">
+                No macros yet — tap Edit, then &ldquo;Calculate from ingredients&rdquo;.
+              </p>
+            )}
+
             {/* Kid-friendly toggle */}
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-neutral-700">Kid-friendly</span>
               <button
                 onClick={() => toggleKidFriendlyMutation.mutate(!recipe.isKidFriendly)}
-                className={`relative w-11 h-6 rounded-full transition-colors ${
+                disabled={recipe.editable === false}
+                className={`relative w-11 h-6 rounded-full transition-colors disabled:opacity-60 ${
                   recipe.isKidFriendly ? 'bg-primary-600' : 'bg-neutral-200'
                 }`}
               >
@@ -211,15 +219,23 @@ export default function RecipeDetailModal({ recipe: recipeSummary, isOpen, onClo
             {recipe.source === 'SPOONACULAR' && (
               <p className="text-xs text-neutral-400">Recipe sourced from Spoonacular</p>
             )}
+            {recipe.source === 'THEMEALDB' && (
+              <p className="text-xs text-neutral-400">Recipe sourced from TheMealDB</p>
+            )}
+
+            {recipe.editable === false && (
+              <p className="text-xs text-neutral-400">Shared library recipe — only the admin can edit it.</p>
+            )}
 
             {/* Action buttons */}
-            <div className="grid grid-cols-3 gap-2 pt-2">
+            <div className={`grid ${recipe.editable === false ? 'grid-cols-1' : 'grid-cols-3'} gap-2 pt-2`}>
               <button
                 onClick={() => setAddToPlanOpen((v) => !v)}
                 className="py-2 text-xs font-medium text-neutral-700 border border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors"
               >
                 Add to plan
               </button>
+              {recipe.editable !== false && (<>
               <button
                 onClick={() => setEditOpen(true)}
                 className="py-2 text-xs font-medium text-neutral-700 border border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors"
@@ -232,6 +248,7 @@ export default function RecipeDetailModal({ recipe: recipeSummary, isOpen, onClo
               >
                 Delete
               </button>
+              </>)}
             </div>
 
             {addToPlanOpen && <AddToPlanPicker recipeId={recipe.id} onClose={() => setAddToPlanOpen(false)} />}

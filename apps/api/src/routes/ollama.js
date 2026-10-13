@@ -13,27 +13,28 @@ import {
   suggestRecipesByPrompt,
 } from '../services/ollama.js';
 import { ollamaState } from '../lib/ollamaState.js';
+import { settingsForUser, getInstanceSettings } from '../lib/instanceSettings.js';
+import { limits } from '../lib/security.js';
 
-async function getUserSettings(userId) {
-  return prisma.appSettings.findUnique({ where: { userId } });
-}
+// The user's own settings, with the server-wide Ollama host/model.
+const getUserSettings = settingsForUser;
 
 // ── /api/ollama/* ─────────────────────────────────────────────────────────────
 
 const ollamaRouter = Router();
-ollamaRouter.use(requireAuth);
+ollamaRouter.use(requireAuth, limits.ai);
 
 // GET /api/ollama/models
 ollamaRouter.get('/models', asyncHandler(async (req, res) => {
-  const settings = await getUserSettings(req.user.userId);
-  const models = await getAvailableModels(settings?.ollamaHost ?? 'http://192.168.1.190:11434');
+  const { ollamaHost } = await getInstanceSettings();
+  const models = await getAvailableModels(ollamaHost);
   res.json({ data: models, error: null });
 }));
 
 // POST /api/ollama/test
 ollamaRouter.post('/test', asyncHandler(async (req, res) => {
-  const settings = await getUserSettings(req.user.userId);
-  const result = await testConnection(settings?.ollamaHost ?? 'http://192.168.1.190:11434');
+  const { ollamaHost } = await getInstanceSettings();
+  const result = await testConnection(ollamaHost);
   ollamaState.connected = result.connected;
   ollamaState.lastCheckedAt = Date.now();
   res.json({ data: result, error: null });
@@ -43,11 +44,13 @@ export default ollamaRouter;
 
 // ── AI routes mounted at /api (mealplans, recipes, budget) ────────────────────
 
+// Mounted at /api, so router-level middleware would run for every /api request
+// that passes through: the AI rate limit is attached per route instead.
 export const aiRouter = Router();
 aiRouter.use(requireAuth);
 
 // POST /api/mealplans/:id/ai-suggest
-aiRouter.post('/mealplans/:id/ai-suggest', asyncHandler(async (req, res) => {
+aiRouter.post('/mealplans/:id/ai-suggest', limits.ai, asyncHandler(async (req, res) => {
   const mealPlanId = parseInt(req.params.id);
   const userId = req.user.userId;
 
@@ -98,7 +101,7 @@ aiRouter.post('/mealplans/:id/ai-suggest', asyncHandler(async (req, res) => {
 }));
 
 // POST /api/mealplans/:id/ai-suggest-slot
-aiRouter.post('/mealplans/:id/ai-suggest-slot', asyncHandler(async (req, res) => {
+aiRouter.post('/mealplans/:id/ai-suggest-slot', limits.ai, asyncHandler(async (req, res) => {
   const mealPlanId = parseInt(req.params.id);
   const userId = req.user.userId;
 
@@ -161,10 +164,11 @@ aiRouter.post('/mealplans/:id/ai-suggest-slot', asyncHandler(async (req, res) =>
 }));
 
 // POST /api/recipes/estimate-macros
-aiRouter.post('/recipes/estimate-macros', asyncHandler(async (req, res) => {
+aiRouter.post('/recipes/estimate-macros', limits.ai, asyncHandler(async (req, res) => {
   const schema = z.object({
-    recipeName: z.string().min(1),
-    ingredients: z.array(z.string().min(1)),
+    recipeName: z.string().min(1).max(200),
+    ingredients: z.array(z.string().min(1).max(300)).max(60),
+    servings: z.number().int().min(1).max(100).default(1),
   });
 
   const parsed = schema.safeParse(req.body);
@@ -176,7 +180,7 @@ aiRouter.post('/recipes/estimate-macros', asyncHandler(async (req, res) => {
   }
 
   const settings = await getUserSettings(req.user.userId);
-  const result = await estimateMacros(parsed.data.recipeName, parsed.data.ingredients, settings);
+  const result = await estimateMacros(parsed.data.recipeName, parsed.data.ingredients, parsed.data.servings, settings);
   if (result?.error) {
     return res.status(502).json({ data: null, error: { message: result.message, code: result.code } });
   }
@@ -184,8 +188,8 @@ aiRouter.post('/recipes/estimate-macros', asyncHandler(async (req, res) => {
 }));
 
 // POST /api/recipes/ai-suggest
-aiRouter.post('/recipes/ai-suggest', asyncHandler(async (req, res) => {
-  const schema = z.object({ prompt: z.string().min(1) });
+aiRouter.post('/recipes/ai-suggest', limits.ai, asyncHandler(async (req, res) => {
+  const schema = z.object({ prompt: z.string().min(1).max(500) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({
@@ -203,7 +207,7 @@ aiRouter.post('/recipes/ai-suggest', asyncHandler(async (req, res) => {
 }));
 
 // GET /api/budget/insight
-aiRouter.get('/budget/insight', asyncHandler(async (req, res) => {
+aiRouter.get('/budget/insight', limits.ai, asyncHandler(async (req, res) => {
   const userId = req.user.userId;
   const settings = await getUserSettings(userId);
 

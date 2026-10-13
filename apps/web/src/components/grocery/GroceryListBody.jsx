@@ -22,19 +22,15 @@ const CATEGORY_META = {
   MISC:     { label: 'Misc',     Icon: IconCategory },
 };
 
-const PRICE_KEYS = {
-  Walmart: 'estimatedPriceWalmart',
-  Kroger: 'estimatedPriceKroger',
-  Aldi: 'estimatedPriceAldi',
-};
-
-function categorySubtotal(items, store) {
-  const key = PRICE_KEYS[store];
-  const total = items.reduce((sum, i) => sum + (i[key] ?? 0), 0);
+function categorySubtotal(items, prices, store) {
+  const total = items.reduce((sum, i) => {
+    const q = prices[i.id]?.[store];
+    return sum + (q?.status === 'ok' ? Math.round(q.price * 100) : 0);
+  }, 0);
   return total > 0 ? centsToDisplay(total) : null;
 }
 
-export default function GroceryListBody({ itemsByCategory, listId, activeStore, excludedStaples }) {
+export default function GroceryListBody({ itemsByCategory, listId, activeStore, prices = {}, excludedStaples }) {
   const [excludedOpen, setExcludedOpen] = useState(false);
   const queryClient = useQueryClient();
 
@@ -57,7 +53,9 @@ export default function GroceryListBody({ itemsByCategory, listId, activeStore, 
   const handleAddBack = (stapleName) => {
     const staple = (pantryItems ?? []).find((p) => p.name.toLowerCase() === stapleName.toLowerCase());
     if (staple) {
-      removePantryMutation.mutate(staple.id);
+      removePantryMutation.mutate(staple.id, {
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['grocery-list'] }),
+      });
     } else {
       toast.error(`Could not find "${stapleName}" in pantry staples`);
     }
@@ -69,7 +67,7 @@ export default function GroceryListBody({ itemsByCategory, listId, activeStore, 
         const items = itemsByCategory[cat];
         if (!items || items.length === 0) return null;
         const { label, Icon } = CATEGORY_META[cat];
-        const subtotal = categorySubtotal(items, activeStore);
+        const subtotal = categorySubtotal(items, prices, activeStore);
         return (
           <div key={cat}>
             <div className="flex items-center gap-2 mb-2">
@@ -83,7 +81,7 @@ export default function GroceryListBody({ itemsByCategory, listId, activeStore, 
                   key={item.id}
                   item={item}
                   listId={listId}
-                  activeStore={activeStore}
+                  quote={prices[item.id]?.[activeStore] ?? null}
                 />
               ))}
             </div>
@@ -102,11 +100,16 @@ export default function GroceryListBody({ itemsByCategory, listId, activeStore, 
           </button>
           {excludedOpen && (
             <div className="mt-2 bg-neutral-50 rounded-xl border border-neutral-100 px-3 py-1">
-              {excludedStaples.map((name) => (
-                <div key={name} className="flex items-center justify-between py-2 border-b border-neutral-100 last:border-0">
-                  <span className="text-sm text-neutral-500">{name}</span>
+              {excludedStaples.map(({ id, name, staple }) => (
+                <div key={id} className="flex items-center justify-between py-2 border-b border-neutral-100 last:border-0">
+                  <span className="text-sm text-neutral-500">
+                    {name}
+                    {staple.toLowerCase() !== name.toLowerCase() && (
+                      <span className="ml-1.5 text-xs text-neutral-400">({staple})</span>
+                    )}
+                  </span>
                   <button
-                    onClick={() => handleAddBack(name)}
+                    onClick={() => handleAddBack(staple)}
                     className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium"
                   >
                     <IconPlus size={12} />

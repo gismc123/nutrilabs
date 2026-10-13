@@ -48,6 +48,39 @@ async function ollamaGenerate(ollamaHost, model, prompt) {
   }
 }
 
+const INGREDIENTS_SPEC = 'ingredients (array of objects with name (string, the grocery item e.g. "chicken breast"), quantity (number, total for the recipe), unit (string such as "cup", "tbsp", "tsp", "lb", "oz", "can", or null for whole items))';
+
+function parseQuantity(value) {
+  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? value : null;
+  if (typeof value !== 'string') return null;
+  const parts = value.trim().split(/\s+/);
+  let total = 0;
+  for (const part of parts) {
+    const frac = part.match(/^(\d+)\/(\d+)$/);
+    if (frac) total += Number(frac[1]) / Number(frac[2]);
+    else if (!Number.isNaN(Number(part))) total += Number(part);
+    else return total > 0 ? total : null;
+  }
+  return total > 0 ? total : null;
+}
+
+// Coerce a model's ingredient list into { name, quantity, unit } rows the recipe API accepts.
+export function cleanIngredients(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((raw) => {
+      if (typeof raw === 'string') return { name: raw.trim(), quantity: null, unit: null };
+      const name = String(raw?.name ?? raw?.ingredient ?? raw?.item ?? '').trim();
+      const unit = raw?.unit != null && String(raw.unit).trim() ? String(raw.unit).trim() : null;
+      return { name, quantity: parseQuantity(raw?.quantity ?? raw?.amount), unit };
+    })
+    .filter((i) => i.name);
+}
+
+function withCleanIngredients(suggestions) {
+  return suggestions.map((s) => ({ ...s, ingredients: cleanIngredients(s?.ingredients) }));
+}
+
 export async function testConnection(ollamaHost) {
   try {
     const data = await ollamaGet(`${ollamaHost}/api/tags`);
@@ -79,7 +112,7 @@ Pantry staples available: ${pantryStaples.join(', ') || 'none'}
 Nutrition goals: ${JSON.stringify(nutritionGoals)}
 
 Return a JSON array of exactly 21 meal suggestions covering 7 days (MON through SUN) and 3 meals per day (BREAKFAST, LUNCH, DINNER).
-Each item must include: dayOfWeek (MON/TUE/WED/THU/FRI/SAT/SUN), mealType (BREAKFAST/LUNCH/DINNER), name, description, estimatedCalories (integer), estimatedProteinG (integer), estimatedCarbsG (integer), estimatedFatG (integer), estimatedCostPerServing (number in dollars), isKidFriendly (boolean), reason (one sentence explaining why this meal fits the household).
+Each item must include: dayOfWeek (MON/TUE/WED/THU/FRI/SAT/SUN), mealType (BREAKFAST/LUNCH/DINNER), name, description, estimatedCalories (integer), estimatedProteinG (integer), estimatedCarbsG (integer), estimatedFatG (integer), estimatedCostPerServing (number in dollars), isKidFriendly (boolean), reason (one sentence explaining why this meal fits the household), ${INGREDIENTS_SPEC}.
 Return only the JSON array.`;
 
   try {
@@ -87,7 +120,7 @@ Return only the JSON array.`;
     if (!Array.isArray(parsed)) {
       return { error: true, code: 'OLLAMA_UNAVAILABLE', message: 'Response was not an array' };
     }
-    return parsed;
+    return withCleanIngredients(parsed);
   } catch (err) {
     return { error: true, code: 'OLLAMA_UNAVAILABLE', message: err.message };
   }
@@ -110,7 +143,7 @@ Recipes already this week: ${(recipesAlreadyThisWeek ?? []).join(', ') || 'none'
 Pantry staples: ${(pantryStaples ?? []).join(', ') || 'none'}
 
 Return a JSON array of exactly 3 meal options for this slot.
-Each option must include: name, description, estimatedCalories (integer), estimatedProteinG (integer), estimatedCarbsG (integer), estimatedFatG (integer), estimatedCostPerServing (number in dollars), isKidFriendly (boolean), reason (one sentence).
+Each option must include: name, description, estimatedCalories (integer), estimatedProteinG (integer), estimatedCarbsG (integer), estimatedFatG (integer), estimatedCostPerServing (number in dollars), isKidFriendly (boolean), reason (one sentence), ${INGREDIENTS_SPEC}.
 Return only the JSON array.`;
 
   try {
@@ -118,20 +151,23 @@ Return only the JSON array.`;
     if (!Array.isArray(parsed)) {
       return { error: true, code: 'OLLAMA_UNAVAILABLE', message: 'Response was not an array' };
     }
-    return parsed;
+    return withCleanIngredients(parsed);
   } catch (err) {
     return { error: true, code: 'OLLAMA_UNAVAILABLE', message: err.message };
   }
 }
 
-export async function estimateMacros(recipeName, ingredients, settings) {
+export async function estimateMacros(recipeName, ingredients, servings, settings) {
+  // Ask for the whole-recipe total and divide here: local models are unreliable at
+  // "per serving" arithmetic (they tend to return totals or something in between).
   const prompt = `You are a nutrition estimator. Respond with JSON only, no markdown.
 
 Recipe: ${recipeName}
-Ingredients (per serving):
+Ingredients (amounts for the WHOLE recipe):
 ${ingredients.join('\n')}
 
-Return a JSON object with these fields per serving: calories (integer), proteinG (number), carbsG (number), fatG (number), costPerServingEstimate (number in dollars).
+Estimate the TOTAL nutrition of all the ingredients above combined.
+Return a JSON object with these fields for the whole recipe: calories (integer), proteinG (number), carbsG (number), fatG (number), totalCost (number in dollars).
 Return only the JSON object.`;
 
   try {
@@ -139,7 +175,19 @@ Return only the JSON object.`;
     if (typeof parsed !== 'object' || Array.isArray(parsed)) {
       return { error: true, code: 'OLLAMA_UNAVAILABLE', message: 'Response was not an object' };
     }
-    return parsed;
+    const per = (v, digits = 0) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return null;
+      const f = 10 ** digits;
+      return Math.round((n / servings) * f) / f;
+    };
+    return {
+      calories: per(parsed.calories),
+      proteinG: per(parsed.proteinG, 1),
+      carbsG: per(parsed.carbsG, 1),
+      fatG: per(parsed.fatG, 1),
+      costPerServingEstimate: per(parsed.totalCost, 2),
+    };
   } catch (err) {
     return { error: true, code: 'OLLAMA_UNAVAILABLE', message: err.message };
   }
@@ -151,7 +199,7 @@ export async function suggestRecipesByPrompt(userPrompt, settings) {
 User request: "${userPrompt}"
 
 Return a JSON array of exactly 5 recipe suggestions.
-Each item must include: name, description, mealType (BREAKFAST/LUNCH/DINNER/SNACK), estimatedCalories (integer), estimatedProteinG (integer), estimatedCarbsG (integer), estimatedFatG (integer), estimatedCostPerServing (number in dollars), isKidFriendly (boolean), prepTimeMinutes (integer).
+Each item must include: name, description, mealType (BREAKFAST/LUNCH/DINNER/SNACK), estimatedCalories (integer), estimatedProteinG (integer), estimatedCarbsG (integer), estimatedFatG (integer), estimatedCostPerServing (number in dollars), isKidFriendly (boolean), prepTimeMinutes (integer), ${INGREDIENTS_SPEC}.
 Return only the JSON array.`;
 
   try {
@@ -159,7 +207,7 @@ Return only the JSON array.`;
     if (!Array.isArray(parsed)) {
       return { error: true, code: 'OLLAMA_UNAVAILABLE', message: 'Response was not an array' };
     }
-    return parsed;
+    return withCleanIngredients(parsed);
   } catch (err) {
     return { error: true, code: 'OLLAMA_UNAVAILABLE', message: err.message };
   }

@@ -9,6 +9,7 @@ import {
   IconBarcode,
 } from '@tabler/icons-react';
 import { useHealth } from '../../hooks/useHealth.js';
+import { useSettings } from '../../hooks/useSettings.js';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Home', icon: IconHome, end: true },
@@ -19,14 +20,15 @@ const NAV_ITEMS = [
   { to: '/pantry', label: 'Pantry', icon: IconBarcode },
 ];
 
-function StatusDot({ connected }) {
+function StatusDot({ connected, title }) {
   return (
     <span
+      title={title}
       className={`inline-block w-2 h-2 rounded-full ${
         connected === true
           ? 'bg-primary-600'
-          : connected === false
-          ? 'bg-neutral-300'
+          : connected === 'partial'
+          ? 'bg-accent-300'
           : 'bg-neutral-300'
       }`}
     />
@@ -35,6 +37,17 @@ function StatusDot({ connected }) {
 
 export default function Sidebar() {
   const { health } = useHealth();
+  const { settings } = useSettings();
+
+  // Green only when prices can actually be fetched: credentials work and a store
+  // (or a ZIP to find the nearest one) is set.
+  const krogerHasStore = !!(settings?.krogerLocationId || settings?.krogerZip);
+  const krogerStatus = !health?.krogerConnected ? false : krogerHasStore ? true : 'partial';
+  const krogerTitle = !health?.krogerConnected
+    ? 'Kroger credentials missing or rejected'
+    : krogerHasStore
+    ? `Pricing from ${settings.krogerStoreName ?? `nearest store to ${settings.krogerZip}`}`
+    : 'Credentials OK — choose a store in Settings → Connections';
 
   return (
     <aside className="hidden md:flex flex-col w-[220px] flex-shrink-0 border-r border-neutral-200 bg-white h-full">
@@ -87,11 +100,14 @@ export default function Sidebar() {
             Ollama
           </div>
           <div className="flex items-center gap-2 text-xs text-neutral-500">
-            <StatusDot connected={health?.spoonacularConnected} />
+            <StatusDot
+              connected={!!settings?.spoonacularConfigured}
+              title={settings?.spoonacularKeySource === 'env' ? 'Using the .env key' : settings?.spoonacularConfigured ? 'Using the key saved in Settings' : 'No Spoonacular key'}
+            />
             Spoonacular
           </div>
           <div className="flex items-center gap-2 text-xs text-neutral-500">
-            <StatusDot connected={false} />
+            <StatusDot connected={krogerStatus} title={krogerTitle} />
             Kroger
           </div>
         </div>
