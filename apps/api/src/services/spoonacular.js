@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import prisma from '../lib/prisma.js';
+import { safeImageUrl } from '../lib/security.js';
 
 const BASE_URL = 'https://api.spoonacular.com';
 
@@ -141,6 +142,7 @@ export function mapToNutriLabsRecipe(spoonacularData) {
     mealType,
     ingredients: ingredientsArr,
     instructions,
+    imageUrl: safeImageUrl(d.image),
     tags,
     isKidFriendly,
     source: 'SPOONACULAR',

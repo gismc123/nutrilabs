@@ -5,6 +5,7 @@ import BottomSheet from '../ui/BottomSheet.jsx';
 import Badge from '../ui/Badge.jsx';
 import Skeleton from '../ui/Skeleton.jsx';
 import RecipeForm from './RecipeForm.jsx';
+import RecipeImage from './RecipeImage.jsx';
 import { getRecipe, updateRecipe, deleteRecipe, updateMealPlanMeals, getMealPlanWeek } from '../../api/client.js';
 import { useUiStore } from '../../store/uiStore.js';
 import { centsToDisplay } from '../../utils/currency.js';
@@ -124,6 +125,8 @@ export default function RecipeDetailModal({ recipe: recipeSummary, isOpen, onClo
           </div>
         ) : recipe ? (
           <div className="space-y-4">
+            <RecipeImage src={recipe.imageUrl} alt={recipe.name} className="w-full h-44 object-cover rounded-xl" />
+
             {recipe.tags?.length > 0 && (
               <div className="flex gap-1.5 flex-wrap">
                 {recipe.tags.map((tag) => <Badge key={tag} label={tag} variant="default" />)}

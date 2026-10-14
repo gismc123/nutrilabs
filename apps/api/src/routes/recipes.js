@@ -4,6 +4,7 @@ import prisma from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { visibleRecipes, canEditRecipe, forbidden } from '../lib/access.js';
+import { safeImageUrl } from '../lib/security.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -31,6 +32,9 @@ const recipeSchema = z.object({
   isKidFriendly: z.boolean().default(true),
   tags: z.array(z.string().max(50)).max(30).default([]),
   instructions: z.string().max(20000).optional().nullable(),
+  imageUrl: z.string().trim().max(2000).nullable().optional()
+    .transform((v) => (v === '' ? null : v))
+    .refine((v) => v == null || safeImageUrl(v), 'Image URL must start with https://'),
   ingredients: z.array(ingredientSchema).max(100).default([]),
   source: z.enum(['USER', 'AI']).default('USER'),
 });

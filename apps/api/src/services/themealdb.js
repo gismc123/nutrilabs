@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import { lookupUnit } from '../lib/groceryEngine.js';
+import { safeImageUrl } from '../lib/security.js';
 
 // "1" is TheMealDB's free public key (fine for development and self-hosting);
 // supporters get a personal key, set via THEMEALDB_API_KEY.
@@ -295,6 +296,7 @@ export function mapToNutriLabsRecipe(meal) {
     servings: 4, // TheMealDB doesn't say; the import sheet lets the user correct it
     prepTimeMinutes: null,
     instructions: cleanInstructions(meal.strInstructions),
+    imageUrl: safeImageUrl(meal.strMealThumb),
     tags: uniqueTags,
     isKidFriendly: !ingredients.some((i) => SPICY_RE.test(i.name)),
     ingredients,

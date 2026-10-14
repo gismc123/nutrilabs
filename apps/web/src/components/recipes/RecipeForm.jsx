@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { IconPlus, IconTrash, IconSearch } from '@tabler/icons-react';
 import BottomSheet from '../ui/BottomSheet.jsx';
 import MacroCalculator from './MacroCalculator.jsx';
+import RecipeImage from './RecipeImage.jsx';
 import { createRecipe, updateRecipe, estimateMacros, searchIngredient } from '../../api/client.js';
 import { useHealth } from '../../hooks/useHealth.js';
 
@@ -107,6 +108,7 @@ export default function RecipeForm({ isOpen, onClose, recipe = null }) {
     tags: [],
     ingredients: [{ ...EMPTY_INGREDIENT }],
     instructions: '',
+    imageUrl: '',
     calories: '',
     proteinG: '',
     carbsG: '',
@@ -136,6 +138,7 @@ export default function RecipeForm({ isOpen, onClose, recipe = null }) {
             }))
           : [{ ...EMPTY_INGREDIENT }],
         instructions: recipe.instructions ?? '',
+        imageUrl: recipe.imageUrl ?? '',
         calories: recipe.calories ?? '',
         proteinG: recipe.proteinG ?? '',
         carbsG: recipe.carbsG ?? '',
@@ -153,6 +156,7 @@ export default function RecipeForm({ isOpen, onClose, recipe = null }) {
         tags: [],
         ingredients: [{ ...EMPTY_INGREDIENT }],
         instructions: '',
+        imageUrl: '',
         calories: '',
         proteinG: '',
         carbsG: '',
@@ -257,6 +261,7 @@ export default function RecipeForm({ isOpen, onClose, recipe = null }) {
           isOptional: i.isOptional,
         })),
       instructions: form.instructions || null,
+      imageUrl: form.imageUrl.trim() || null,
       calories: form.calories ? parseInt(form.calories) : null,
       proteinG: form.proteinG ? parseInt(form.proteinG) : null,
       carbsG: form.carbsG ? parseInt(form.carbsG) : null,
@@ -288,6 +293,21 @@ export default function RecipeForm({ isOpen, onClose, recipe = null }) {
             onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 resize-none"
           />
+        </div>
+
+        {/* Image URL */}
+        <div>
+          <label className="block text-xs font-medium text-neutral-700 mb-1">Image URL (optional)</label>
+          <input
+            type="url"
+            pattern="https://.*"
+            title="Image URL must start with https://"
+            placeholder="https://..."
+            value={form.imageUrl}
+            onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
+            className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+          />
+          <RecipeImage src={form.imageUrl.trim()} alt="" className="mt-2 w-full h-32 object-cover rounded-lg" />
         </div>
 
         {/* Row: mealType + servings */}

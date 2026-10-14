@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { safeEqual, hashToken, safeHttpUrl, normalizeEmail, rateLimit } from '../src/lib/security.js';
+import { safeEqual, hashToken, safeHttpUrl, safeImageUrl, normalizeEmail, rateLimit } from '../src/lib/security.js';
 import { canEditRecipe, visibleRecipes } from '../src/lib/access.js';
 
 test('safeEqual compares secrets without leaking length or type mismatches', () => {
@@ -23,6 +23,15 @@ test('only http(s) URLs survive safeHttpUrl', () => {
   assert.equal(safeHttpUrl('data:text/html,<script>alert(1)</script>'), null);
   assert.equal(safeHttpUrl('not a url'), null);
   assert.equal(safeHttpUrl(''), null);
+});
+
+test('only https URLs survive safeImageUrl', () => {
+  assert.equal(safeImageUrl('https://www.themealdb.com/images/a.jpg'), 'https://www.themealdb.com/images/a.jpg');
+  assert.equal(safeImageUrl('http://example.com/a.jpg'), null, 'the CSP blocks http images');
+  assert.equal(safeImageUrl('javascript:alert(1)'), null);
+  assert.equal(safeImageUrl('data:image/png;base64,AAAA'), null);
+  assert.equal(safeImageUrl(`https://example.com/${'a'.repeat(2000)}`), null);
+  assert.equal(safeImageUrl(null), null);
 });
 
 test('emails are compared case-insensitively', () => {

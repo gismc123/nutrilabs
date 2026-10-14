@@ -115,6 +115,7 @@ model Recipe {
   tags            String[]
   source          RecipeSource
   instructions    String?
+  imageUrl        String?
   spoonacularId   Int?
   mealDbId        Int?
   // Owner. Null = shared library recipe: readable by everyone, editable by admins.

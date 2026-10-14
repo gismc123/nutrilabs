@@ -102,6 +102,7 @@ test('maps a meal to a NutriLabs recipe', () => {
   assert.equal(r.isKidFriendly, false, 'green chilli makes it spicy');
   assert.deepEqual(r.tags, ['India', 'meat', 'curry']);
   assert.equal(r.instructions, 'Heat oil.\nAdd chicken.');
+  assert.equal(r.imageUrl, 'https://www.themealdb.com/images/media/meals/wyxwsp1486979827.jpg');
   assert.deepEqual(r.ingredients.map(({ original, ...i }) => i), [
     { name: 'Chicken', quantity: 1.2, unit: 'kg', isOptional: false },
     { name: 'Onion (thinly sliced)', quantity: 5, unit: null, isOptional: false },

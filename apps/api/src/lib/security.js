@@ -28,6 +28,12 @@ export function safeHttpUrl(value) {
   }
 }
 
+/** The URL if it is https, else null — the CSP's img-src only allows https images. */
+export function safeImageUrl(value) {
+  const url = safeHttpUrl(value);
+  return url?.startsWith('https:') && url.length <= 2000 ? url : null;
+}
+
 /**
  * Fixed-window rate limiter kept in memory (one API process). `key` picks what is
  * counted: the client IP by default, or e.g. the email being tried.
