@@ -1,0 +1,9 @@
+[Unit]
+Description=KrogerDeals database backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=@DEALS_DIR@
+ExecStart=@DEALS_DIR@/scripts/backup.sh
+StandardOutput=append:@LOG_DIR@/backup.log
+StandardError=append:@LOG_DIR@/backup.log

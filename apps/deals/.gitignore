@@ -1,0 +1,9 @@
+# Never commit Kroger data, browser state, or secrets.
+samples/
+state/
+backups/
+*.dump
+*.sql.gz
+.env
+# The repo root ignores prisma/migrations/; this product commits its own.
+!server/prisma/migrations/

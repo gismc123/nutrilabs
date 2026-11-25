@@ -1,0 +1,72 @@
+# KrogerDeals runs as its own compose project, separate from NutriLabs.
+#   docker compose up -d --build            web app + database
+#   scripts/run-worker.sh sync              coupon sync on the desktop display
+name: krogerdeals
+
+services:
+  deals-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: deals
+      POSTGRES_PASSWORD: ${DEALS_DB_PASSWORD:?set DEALS_DB_PASSWORD in .env}
+      POSTGRES_DB: deals
+    volumes:
+      - deals_pg:/var/lib/postgresql/data
+    # No ports: the database is reachable only from this compose network.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deals -d deals"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  deals:
+    build: .
+    image: krogerdeals-app
+    restart: unless-stopped
+    depends_on:
+      deals-db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      TZ: ${TZ:-America/Chicago}
+      DATABASE_URL: postgresql://deals:${DEALS_DB_PASSWORD}@deals-db:5432/deals
+      DEALS_JWT_SECRET: ${DEALS_JWT_SECRET:?set DEALS_JWT_SECRET in .env}
+      DEALS_WORKER_TOKEN: ${DEALS_WORKER_TOKEN:?set DEALS_WORKER_TOKEN in .env}
+      DEALS_DEFAULT_ZIP: ${DEALS_DEFAULT_ZIP:-}
+      KROGER_CLIENT_ID: ${KROGER_CLIENT_ID:-}
+      KROGER_CLIENT_SECRET: ${KROGER_CLIENT_SECRET:-}
+      KROGER_DAILY_PRODUCT_BUDGET: ${KROGER_DAILY_PRODUCT_BUDGET:-6000}
+      PRICE_SYNC_CRON: ${PRICE_SYNC_CRON:-30 4 * * *}
+      NUTRILABS_URL: ${NUTRILABS_URL:-}
+      NUTRILABS_PRICER_TOKEN: ${NUTRILABS_PRICER_TOKEN:-}
+    # Port 3101 is the web app. The internal ingest port 3102 is never published.
+    ports:
+      - "${DEALS_PORT:-1043}:3101"
+
+  # Started on demand by scripts/run-worker.sh, never by "up".
+  deals-worker:
+    build: ./worker
+    image: krogerdeals-worker
+    profiles: ["worker"]
+    user: "1000:1000"
+    shm_size: 1gb
+    depends_on:
+      - deals
+    environment:
+      DISPLAY: ${DISPLAY_NUM:-:0}
+      XAUTHORITY: /tmp/.Xauth
+      DEALS_INGEST_URL: http://deals:3102
+      DEALS_WORKER_TOKEN: ${DEALS_WORKER_TOKEN}
+      DEALS_ALLOW_SIGNED_OUT: ${DEALS_ALLOW_SIGNED_OUT:-true}
+      KROGER_DOMAIN: ${KROGER_DOMAIN:-kroger.com}
+    volumes:
+      - ${XAUTH_FILE:-/dev/null}:/tmp/.Xauth:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      # Browser profile and last raw run live outside the repo.
+      - ${DEALS_STATE_DIR:?set DEALS_STATE_DIR in .env}/browser-profile:/profile
+      - ${DEALS_STATE_DIR}/state:/state
+      - ./samples:/samples
+
+volumes:
+  deals_pg:
