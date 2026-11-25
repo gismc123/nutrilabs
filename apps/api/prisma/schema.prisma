@@ -83,6 +83,7 @@ model User {
   pantryStaples      PantryStaple[]
   pantryInventory    PantryInventoryItem[]
   passwordResetTokens PasswordResetToken[]
+  dealListItems      DealListItem[]
 }
 
 model Profile {
@@ -334,4 +335,195 @@ model FoodMatch {
   updatedAt      DateTime @updatedAt
 
   @@id([key, userId])
+}
+
+// ---- KrogerDeals (apps/api/src/deals) ----------------------------------------
+// Kroger sale prices and digital coupons. Shared catalog and coupons; prices per
+// store; the deal list per user. Raw Kroger payloads are kept in JSON columns so
+// the parser can be fixed later without fetching again.
+
+model DealStore {
+  locationId String   @id
+  name       String
+  address    String?
+  zip        String?
+  lat        Float?
+  lng        Float?
+  updatedAt  DateTime @updatedAt
+  prices     DealPrice[]
+  current    DealStorePrice[]
+
+  @@map("deal_stores")
+}
+
+model DealProduct {
+  upc         String          @id
+  productId   String?
+  name        String
+  brand       String?
+  size        String?
+  soldBy      String?
+  category    String?
+  categories  String[]
+  imageUrl    String?
+  aisle       String?
+  raw         Json?
+  updatedAt   DateTime        @updatedAt
+  prices      DealPrice[]
+  current     DealStorePrice[]
+  coupons     DealCouponProduct[]
+
+  @@index([brand])
+  @@map("deal_products")
+}
+
+// Price history: one row per product, store, and capture.
+model DealPrice {
+  id          Int      @id @default(autoincrement())
+  upc         String
+  locationId  String
+  regular     Float?
+  promo       Float?
+  promoEnds   DateTime?
+  capturedAt  DateTime @default(now())
+  raw         Json?
+  product     DealProduct  @relation(fields: [upc], references: [upc], onDelete: Cascade)
+  store       DealStore    @relation(fields: [locationId], references: [locationId], onDelete: Cascade)
+
+  @@index([upc, locationId, capturedAt])
+  @@map("deal_prices")
+}
+
+// Latest known price per product and store, kept beside the history for fast reads.
+model DealStorePrice {
+  upc         String
+  locationId  String
+  regular     Float?
+  promo       Float?
+  promoEnds   DateTime?
+  capturedAt  DateTime
+  product     DealProduct  @relation(fields: [upc], references: [upc], onDelete: Cascade)
+  store       DealStore    @relation(fields: [locationId], references: [locationId], onDelete: Cascade)
+
+  @@id([upc, locationId])
+  @@index([locationId, promo])
+  @@map("deal_store_prices")
+}
+
+model DealCoupon {
+  id                 String          @id // Kroger coupon id
+  offerId            String?
+  couponNumber       String?
+  title              String
+  description        String
+  terms              String?
+  brand              String?
+  categories         String[]
+  discountType       String // AMOUNT_OFF | PERCENT_OFF | FIXED_PRICE | BOGO | FREE_WITH_PURCHASE | POINTS | SERVICE | UNKNOWN
+  amountOff          Float?
+  percentOff         Float?
+  fixedPrice         Float?
+  sizeRefPrice       Float? // fixed-price deals: regular price of the smallest matched size
+  perLb              Boolean         @default(false)
+  minQuantity        Int             @default(1)
+  minSpend           Float?
+  usageLimit         Int? // null = not limited by the coupon
+  pickupDeliveryOnly Boolean         @default(false)
+  weeklyDigitalDeal  Boolean         @default(false)
+  specialSavings     String[]
+  clipped            Boolean         @default(false)
+  imageUrl           String?
+  startDate          DateTime?
+  expiryDate         DateTime?
+  source             String          @default("kroger-digital")
+  status             String          @default("active") // active | expired | removed
+  matchStatus        String          @default("pending") // pending | matched | unmatched | not_grocery
+  searchedAt         DateTime? // last targeted product search for linking
+  firstSeenAt        DateTime        @default(now())
+  lastSeenAt         DateTime        @default(now())
+  capturedAt         DateTime        @default(now())
+  raw                Json
+  products           DealCouponProduct[]
+
+  @@index([status, expiryDate])
+  @@index([brand])
+  @@map("deal_coupons")
+}
+
+model DealCouponProduct {
+  couponId   String
+  upc        String
+  confidence String // high | medium
+  score      Float
+  reason     String
+  coupon     DealCoupon  @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  product    DealProduct @relation(fields: [upc], references: [upc], onDelete: Cascade)
+
+  @@id([couponId, upc])
+  @@index([upc])
+  @@map("deal_coupon_products")
+}
+
+model DealSyncRun {
+  id         Int       @id @default(autoincrement())
+  kind       String // coupons | prices
+  startedAt  DateTime
+  finishedAt DateTime?
+  status     String // running | ok | partial | session_expired | failed
+  signedIn   Boolean?
+  counts     Json?
+  error      String?
+  note       String?
+
+  @@index([kind, startedAt])
+  @@map("deal_sync_runs")
+}
+
+// Search terms priced on every nightly run.
+model DealWatchTerm {
+  term         String    @id
+  source       String // staple | wanted | nutrilabs | lookup
+  lastSyncedAt DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@map("deal_watch_terms")
+}
+
+// Cached product search results (term + store -> upcs) to save API calls.
+model DealProductSearch {
+  key       String   @id // "<locationId>|<query>"
+  query     String
+  upcs      String[]
+  at        DateTime
+
+  @@map("deal_product_searches")
+}
+
+// Kroger API calls per UTC day, to stay under the free-tier limits.
+model DealApiUsage {
+  day       String @id // YYYY-MM-DD
+  products  Int    @default(0)
+  locations Int    @default(0)
+  tokens    Int    @default(0)
+
+  @@map("deal_api_usage")
+}
+
+model DealListItem {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  name       String
+  upc        String?
+  couponId   String?
+  quantity   Int      @default(1)
+  unitPrice  Float?
+  regular    Float?
+  needsClip  Boolean  @default(false)
+  checked    Boolean  @default(false)
+  note       String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("deal_list_items")
 }

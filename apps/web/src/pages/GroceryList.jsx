@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { getMealPlanWeek, getGroceryList, getStorePrices } from '../api/client.js';
 import { formatDate } from '../utils/dates.js';
 import ErrorBoundary from '../components/ui/ErrorBoundary.jsx';
@@ -93,6 +93,9 @@ function GroceryListContent() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-neutral-900">Grocery List</h1>
+        <Link to="/deals?from=shop" className="text-sm font-semibold text-primary-600 hover:underline">
+          Find Kroger deals
+        </Link>
       </div>
 
       <ListToolbar

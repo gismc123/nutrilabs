@@ -7,6 +7,7 @@ import {
   IconWallet,
   IconSettings,
   IconBarcode,
+  IconTag,
 } from '@tabler/icons-react';
 import { useHealth } from '../../hooks/useHealth.js';
 import { useSettings } from '../../hooks/useSettings.js';
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { to: '/shop', label: 'Shop', icon: IconShoppingCart },
   { to: '/budget', label: 'Budget', icon: IconWallet },
   { to: '/pantry', label: 'Pantry', icon: IconBarcode },
+  { to: '/deals', label: 'Deals', icon: IconTag },
 ];
 
 function StatusDot({ connected, title }) {

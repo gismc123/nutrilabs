@@ -31,6 +31,7 @@ Plan your week's meals, find free recipes, calculate accurate macros from USDA d
 - **Real store prices** from the stores you pick: Kroger (official API) and Meijer daily, ALDI and Sam's Club weekly via a separate pricer service; seeded baseline prices fill any gaps
 - **Weekly budget meter** with spend tracking and savings vs. eating out calculation
 - **Eating-out log** to record what you spend when you skip cooking, with a full history and weekly trend chart
+- **Kroger Deals**: sale prices and digital coupons at your Kroger store, matched to your meal plan's grocery list, with budget bundles, an aisle price check, and a deal list that says which coupons to clip (it never clips them for you). See [apps/deals-worker/README.md](apps/deals-worker/README.md)
 
 ### Pantry
 - **Barcode scanner** — use your phone's camera to scan any product; NutriLabs looks it up on Open Food Facts automatically
@@ -193,6 +194,11 @@ That's it — you're running.
 | `PRICER_TOKEN` | — | Shared secret between the API and the pricer service (`openssl rand -hex 32`) |
 | `HEADLESSX_API_KEY` | — | HeadlessX key, for ALDI / Sam's Club prices |
 | `PRICER_TZ` | `America/Chicago` | Time zone for the pricer's early-morning schedule |
+| `DEALS_WORKER_TOKEN` | (none) | Shared secret between the API and the Deals coupon worker (`openssl rand -hex 32`) |
+| `DEALS_STATE_DIR` | (none) | Folder outside the repo for the coupon worker's browser profile |
+| `DEALS_ALLOW_SIGNED_OUT` | `true` | Read Kroger's public coupon list when the worker is not signed in |
+| `KROGER_DAILY_PRODUCT_BUDGET` | `6000` | Kroger product API calls Deals may use per day (free tier: 10,000, shared) |
+| `DEALS_PRICE_SYNC_CRON` | `30 4 * * *` | Nightly Deals price sync schedule |
 
 API keys (Spoonacular, USDA) can be set per user in **Settings → Connections**. Server-wide settings — the Ollama host/model, SMTP and the app base URL — can only be changed there by the **admin** (the account created by the setup wizard); the admin's values take precedence over these environment variables.
 
@@ -311,6 +317,15 @@ docker compose exec -w /data pricer node /app/src/cli.js status   # schedule, pa
 
 See [apps/pricer/README.md](apps/pricer/README.md) for the full command line and schedule.
 
+### Deals coupon sync
+
+```bash
+apps/deals-worker/scripts/run-worker.sh sync      # read Kroger's coupons (headed Chromium on the desktop)
+apps/deals-worker/scripts/healthcheck.sh          # API, hidden ingest path, last sync times
+```
+
+See [apps/deals-worker/README.md](apps/deals-worker/README.md) for the nightly timer and the optional Kroger login.
+
 ### Reset the database (destructive — deletes all data)
 
 ```bash
@@ -380,9 +395,11 @@ nutrilabs/
 │   │   │   ├── services/     # External API clients (Ollama, USDA, TheMealDB, Kroger, etc.)
 │   │   │   ├── lib/          # Grocery engine, macro matching, access control, rate limits
 │   │   │   ├── jobs/         # Scheduled jobs (account purge)
+│   │   │   ├── deals/        # Kroger Deals: prices, coupons, matching, bundles (/api/deals)
 │   │   │   └── scripts/      # One-off maintenance scripts
 │   │   └── test/             # node --test suites
 │   ├── pricer/               # Standalone grocery price service (Kroger, Meijer, ALDI, Sam's Club)
+│   ├── deals-worker/         # Kroger coupon reader for Deals (headed Chromium, on demand)
 │   └── web/                  # React + Vite frontend
 │       ├── src/
 │       │   ├── api/          # Axios client

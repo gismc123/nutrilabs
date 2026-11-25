@@ -1,9 +1,0 @@
-**/node_modules
-**/dist
-samples
-state
-backups
-.env
-*.md
-worker
-scripts

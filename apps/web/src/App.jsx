@@ -20,6 +20,12 @@ import Settings from './pages/Settings.jsx';
 import PantryInventory from './pages/PantryInventory.jsx';
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
 import TermsOfUse from './pages/TermsOfUse.jsx';
+import DealsHome from './pages/deals/DealsHome.jsx';
+import FindDeals from './pages/deals/FindDeals.jsx';
+import Aisle from './pages/deals/Aisle.jsx';
+import Coupons from './pages/deals/Coupons.jsx';
+import DealList from './pages/deals/DealList.jsx';
+import DealsStore from './pages/deals/Store.jsx';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -63,6 +69,13 @@ export default function App() {
             <Route path="budget" element={<BudgetTracker />} />
             <Route path="settings" element={<Settings />} />
             <Route path="pantry" element={<PantryInventory />} />
+            <Route path="deals" element={<DealsHome />}>
+              <Route index element={<FindDeals />} />
+              <Route path="aisle" element={<Aisle />} />
+              <Route path="coupons" element={<Coupons />} />
+              <Route path="list" element={<DealList />} />
+              <Route path="store" element={<DealsStore />} />
+            </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

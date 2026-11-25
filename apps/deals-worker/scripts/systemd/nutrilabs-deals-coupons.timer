@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the NutriLabs Deals coupon sync every night
+
+[Timer]
+# Before the 4:30 price sync, so new coupons get matched the same night.
+OnCalendar=*-*-* 03:45:00
+RandomizedDelaySec=15min
+Persistent=false
+
+[Install]
+WantedBy=timers.target

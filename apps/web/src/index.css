@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Deals section (pages/deals). Prefixed so they never collide with other pages. */
+@layer components {
+  .kd-card { @apply rounded-2xl bg-white shadow-sm ring-1 ring-neutral-200; }
+  .kd-btn { @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-4 font-semibold transition active:scale-[0.98] disabled:opacity-50; }
+  .kd-btn-primary { @apply kd-btn bg-primary-600 text-white hover:bg-primary-900; }
+  .kd-btn-ghost { @apply kd-btn bg-white text-neutral-800 ring-1 ring-neutral-300 hover:bg-neutral-50; }
+  .kd-input { @apply min-h-12 w-full rounded-xl border border-neutral-300 bg-white px-3 text-base outline-none focus:border-primary-600 focus:ring-2 focus:ring-primary-100; }
+  .kd-label { @apply mb-1 block text-sm font-medium text-neutral-700; }
+  .kd-chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold; }
+  .kd-skeleton { @apply animate-pulse rounded-xl bg-neutral-200; }
+}

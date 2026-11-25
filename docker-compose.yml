@@ -48,6 +48,11 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-NutriLabs}
+      # Deals (apps/api/src/deals): the coupon worker's shared token, and limits.
+      DEALS_WORKER_TOKEN: ${DEALS_WORKER_TOKEN:-}
+      KROGER_DAILY_PRODUCT_BUDGET: ${KROGER_DAILY_PRODUCT_BUDGET:-6000}
+      DEALS_PRICE_SYNC_CRON: ${DEALS_PRICE_SYNC_CRON:-30 4 * * *}
+      DEALS_TZ: ${DEALS_TZ:-America/Chicago}
     networks:
       default:
         # Unique name: the pricer also joins HeadlessX's network, which has its own "api".
@@ -75,6 +80,33 @@ services:
     networks:
       - default
       - headlessx
+
+  # Deals coupon reader (apps/deals-worker). Never started by "up" or deploy.sh:
+  # apps/deals-worker/scripts/run-worker.sh runs it on the desktop display, because
+  # Kroger blocks headless browsers. Read-only: it never clips coupons.
+  deals-worker:
+    build:
+      context: ./apps/deals-worker
+    image: nutrilabs-deals-worker
+    profiles: ["deals-worker"]
+    user: "1000:1000"
+    shm_size: 1gb
+    depends_on:
+      - api
+    environment:
+      DISPLAY: ${DEALS_DISPLAY:-:0}
+      XAUTHORITY: /tmp/.Xauth
+      DEALS_INGEST_URL: http://api:3001/api/deals
+      DEALS_WORKER_TOKEN: ${DEALS_WORKER_TOKEN:-}
+      DEALS_ALLOW_SIGNED_OUT: ${DEALS_ALLOW_SIGNED_OUT:-true}
+      KROGER_DOMAIN: ${KROGER_DOMAIN:-kroger.com}
+    volumes:
+      - ${XAUTH_FILE:-/dev/null}:/tmp/.Xauth:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      # Browser profile and the last raw run live outside the repo.
+      - ${DEALS_STATE_DIR:-/tmp/nutrilabs-deals}/browser-profile:/profile
+      - ${DEALS_STATE_DIR:-/tmp/nutrilabs-deals}/state:/state
+      - ./apps/deals-worker/samples:/samples
 
   web:
     build:

@@ -6,6 +6,7 @@ import {
   IconShoppingCart,
   IconWallet,
   IconBarcode,
+  IconTag,
 } from '@tabler/icons-react';
 
 const TABS = [
@@ -15,6 +16,7 @@ const TABS = [
   { to: '/shop', label: 'Shop', icon: IconShoppingCart },
   { to: '/budget', label: 'Budget', icon: IconWallet },
   { to: '/pantry', label: 'Pantry', icon: IconBarcode },
+  { to: '/deals', label: 'Deals', icon: IconTag },
 ];
 
 export default function BottomNav() {

@@ -1,0 +1,6 @@
+# Never commit Kroger data, browser state, or secrets.
+samples/
+state/
+*.dump
+*.sql.gz
+.env

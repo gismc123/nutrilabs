@@ -20,6 +20,7 @@ import budgetRouter from './routes/budget.js';
 import eatingoutRouter from './routes/eatingout.js';
 import pantryInventoryRouter from './routes/pantryInventory.js';
 import pricerRouter from './routes/pricer.js';
+import { dealsRouter, dealsInternalRouter, startDeals } from './deals/index.js';
 import { startPurgeJob } from './jobs/purgeAccounts.js';
 import { limits } from './lib/security.js';
 
@@ -51,6 +52,9 @@ app.use(cors({
   origin: process.env.BASE_URL || 'http://localhost:1042',
   credentials: true,
 }));
+// Before the 200kb JSON limit: the coupon worker posts a whole run (a few MB).
+// Token-guarded, and nginx never serves this path publicly.
+app.use('/api/deals/internal', dealsInternalRouter);
 app.use(express.json({ limit: '200kb' }));
 app.use(cookieParser());
 
@@ -73,10 +77,12 @@ app.use('/api/grocery', groceryRouter);
 app.use('/api/budget', budgetRouter);
 app.use('/api/eatingout', eatingoutRouter);
 app.use('/api/pantry-inventory', pantryInventoryRouter);
+app.use('/api/deals', dealsRouter);
 
 app.use(errorHandler);
 
 startPurgeJob();
+startDeals();
 
 app.listen(PORT, () => {
   console.log(`NutriLabs API running on port ${PORT}`);
