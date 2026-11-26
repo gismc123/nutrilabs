@@ -22,6 +22,7 @@ export default function PreferencesTab() {
   const [weekStartDay, setWeekStartDay] = useState('SUN');
   const [dateFormat, setDateFormat] = useState('MM/DD/YYYY');
   const [currency, setCurrency] = useState('USD');
+  const [foodPreferences, setFoodPreferences] = useState('');
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -32,6 +33,7 @@ export default function PreferencesTab() {
     setWeekStartDay(settings.weekStartDay ?? 'SUN');
     setDateFormat(settings.dateFormat ?? 'MM/DD/YYYY');
     setCurrency(settings.currency ?? 'USD');
+    setFoodPreferences(settings.foodPreferences ?? '');
   }, [settings]);
 
   const prefsMutation = useMutation({
@@ -50,7 +52,7 @@ export default function PreferencesTab() {
   });
 
   const handlePreferencesSave = () => {
-    prefsMutation.mutate({ weekStartDay, dateFormat, currency });
+    prefsMutation.mutate({ weekStartDay, dateFormat, currency, foodPreferences: foodPreferences.trim() || null });
   };
 
   const handlePasswordSave = (e) => {
@@ -89,6 +91,20 @@ export default function PreferencesTab() {
           <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputClass}>
             {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Food preferences (used by AI)</label>
+          <textarea
+            value={foodPreferences}
+            onChange={(e) => setFoodPreferences(e.target.value)}
+            maxLength={1000}
+            rows={4}
+            placeholder="e.g. We love Mexican, Italian and anything on the grill. Simple weeknight cooking, 30 minutes max. Chicken, ground beef and pork are favorites. No seafood, no mushrooms. Breakfast is usually eggs or something grab-and-go."
+            className={inputClass}
+          />
+          <p className="text-xs text-neutral-400 mt-1">
+            Tell the AI what you actually like to cook and eat: cuisines, proteins, how much time you have, what to avoid. Per-person dislikes and diets go on each profile.
+          </p>
         </div>
         <button onClick={handlePreferencesSave} disabled={prefsMutation.isPending}
           className="px-4 py-2 text-sm font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors">

@@ -36,15 +36,21 @@ const recipeSchema = z.object({
     .transform((v) => (v === '' ? null : v))
     .refine((v) => v == null || safeImageUrl(v), 'Image URL must start with https://'),
   ingredients: z.array(ingredientSchema).max(100).default([]),
-  source: z.enum(['USER', 'AI']).default('USER'),
+  source: z.enum(['USER', 'AI', 'WEB']).default('USER'),
+  sourceUrl: z.string().trim().max(2000).nullable().optional()
+    .refine((v) => v == null || /^https?:\/\//i.test(v), 'Source URL must be an http(s) link'),
 });
 
 // Edits keep the recipe's existing source unless one is sent explicitly.
-const recipeUpdateSchema = recipeSchema.extend({ source: z.enum(['USER', 'AI']).optional() });
+const recipeUpdateSchema = recipeSchema.extend({ source: z.enum(['USER', 'AI', 'WEB']).optional() });
 
 router.get('/', asyncHandler(async (req, res) => {
-  const { mealType, isKidFriendly, source, tags, search } = req.query;
+  const { mealType, isKidFriendly, source, tags, search, hidden } = req.query;
   const where = { AND: [visibleRecipes(req.user)] };
+  // Shared recipes the user removed stay out of their library unless asked for.
+  where.AND.push(hidden === 'true'
+    ? { hiddenBy: { some: { userId: req.user.userId } } }
+    : { hiddenBy: { none: { userId: req.user.userId } } });
 
   if (mealType) where.mealType = mealType;
   if (source) where.source = source;
@@ -120,6 +126,28 @@ router.put('/:id', asyncHandler(async (req, res) => {
     });
   });
   res.json({ data: { ...recipe, editable: true }, error: null });
+}));
+
+// POST /api/recipes/:id/hide — remove a shared library recipe from this user's library only.
+router.post('/:id/hide', asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const recipe = Number.isInteger(id) && await prisma.recipe.findFirst({ where: { id, userId: null } });
+  if (!recipe) {
+    return res.status(404).json({ data: null, error: { message: 'Shared recipe not found', code: 'NOT_FOUND' } });
+  }
+  await prisma.hiddenRecipe.upsert({
+    where: { userId_recipeId: { userId: req.user.userId, recipeId: id } },
+    update: {},
+    create: { userId: req.user.userId, recipeId: id },
+  });
+  res.json({ data: { hidden: true }, error: null });
+}));
+
+// DELETE /api/recipes/:id/hide — put a removed shared recipe back.
+router.delete('/:id/hide', asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (Number.isInteger(id)) await prisma.hiddenRecipe.deleteMany({ where: { userId: req.user.userId, recipeId: id } });
+  res.json({ data: { hidden: false }, error: null });
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {

@@ -6,10 +6,11 @@ import Badge from '../ui/Badge.jsx';
 import Skeleton from '../ui/Skeleton.jsx';
 import RecipeForm from './RecipeForm.jsx';
 import RecipeImage from './RecipeImage.jsx';
-import { getRecipe, updateRecipe, deleteRecipe, updateMealPlanMeals, getMealPlanWeek } from '../../api/client.js';
+import { getRecipe, updateRecipe, deleteRecipe, hideRecipe, updateMealPlanMeals, getMealPlanWeek } from '../../api/client.js';
 import { useUiStore } from '../../store/uiStore.js';
 import { centsToDisplay } from '../../utils/currency.js';
 import { formatDate } from '../../utils/dates.js';
+import { safeUrl } from '../../utils/safeUrl.js';
 
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 const MEAL_TYPES = ['BREAKFAST', 'LUNCH', 'DINNER'];
@@ -98,6 +99,16 @@ export default function RecipeDetailModal({ recipe: recipeSummary, isOpen, onClo
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipes'] });
       toast.success('Recipe deleted');
+      onClose();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const hideMutation = useMutation({
+    mutationFn: () => hideRecipe(recipe.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      toast.success('Removed from your library');
       onClose();
     },
     onError: (err) => toast.error(err.message),
@@ -222,22 +233,36 @@ export default function RecipeDetailModal({ recipe: recipeSummary, isOpen, onClo
             {recipe.source === 'SPOONACULAR' && (
               <p className="text-xs text-neutral-400">Recipe sourced from Spoonacular</p>
             )}
+            {recipe.source === 'WEB' && safeUrl(recipe.sourceUrl) && (
+              <a href={safeUrl(recipe.sourceUrl)} target="_blank" rel="noopener noreferrer" className="block text-xs text-primary-600 hover:underline truncate">
+                Original recipe: {new URL(safeUrl(recipe.sourceUrl)).hostname}
+              </a>
+            )}
             {recipe.source === 'THEMEALDB' && (
               <p className="text-xs text-neutral-400">Recipe sourced from TheMealDB</p>
             )}
 
             {recipe.editable === false && (
-              <p className="text-xs text-neutral-400">Shared library recipe — only the admin can edit it.</p>
+              <p className="text-xs text-neutral-400">Shared starter recipe — only the admin can edit it. Removing it only hides it for you.</p>
             )}
 
             {/* Action buttons */}
-            <div className={`grid ${recipe.editable === false ? 'grid-cols-1' : 'grid-cols-3'} gap-2 pt-2`}>
+            <div className={`grid ${recipe.editable === false ? 'grid-cols-2' : 'grid-cols-3'} gap-2 pt-2`}>
               <button
                 onClick={() => setAddToPlanOpen((v) => !v)}
                 className="py-2 text-xs font-medium text-neutral-700 border border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors"
               >
                 Add to plan
               </button>
+              {recipe.editable === false && recipe.userId == null && (
+                <button
+                  onClick={() => hideMutation.mutate()}
+                  disabled={hideMutation.isPending}
+                  className="py-2 text-xs font-medium text-danger-600 border border-danger-200 rounded-lg hover:bg-danger-50 disabled:opacity-50 transition-colors"
+                >
+                  Remove from my library
+                </button>
+              )}
               {recipe.editable !== false && (<>
               <button
                 onClick={() => setEditOpen(true)}

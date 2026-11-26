@@ -6,8 +6,9 @@ import { asyncHandler } from '../middleware/errorHandler.js';
 import {
   testConnection,
   getAvailableModels,
-  suggestMeals,
-  suggestMealForSlot,
+  planDay,
+  suggestIdeas,
+  expandIdea,
   estimateMacros,
   weeklyInsight,
   suggestRecipesByPrompt,
@@ -15,6 +16,7 @@ import {
 import { ollamaState } from '../lib/ollamaState.js';
 import { settingsForUser, getInstanceSettings } from '../lib/instanceSettings.js';
 import { limits } from '../lib/security.js';
+import { loadPlanContext } from '../lib/aiContext.js';
 
 // The user's own settings, with the server-wide Ollama host/model.
 const getUserSettings = settingsForUser;
@@ -49,118 +51,141 @@ export default ollamaRouter;
 export const aiRouter = Router();
 aiRouter.use(requireAuth);
 
-// POST /api/mealplans/:id/ai-suggest
-aiRouter.post('/mealplans/:id/ai-suggest', limits.ai, asyncHandler(async (req, res) => {
-  const mealPlanId = parseInt(req.params.id);
-  const userId = req.user.userId;
+const DAY_ENUM = z.enum(['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']);
+const SLOT_ENUM = z.enum(['BREAKFAST', 'LUNCH', 'DINNER']);
 
-  const [plan, settings, profiles, staples] = await Promise.all([
-    prisma.mealPlan.findFirst({
-      where: { id: mealPlanId, userId },
-      include: { plannedMeals: { include: { recipe: true } }, dayConfigs: true },
-    }),
-    getUserSettings(userId),
-    prisma.profile.findMany({ where: { userId } }),
-    prisma.pantryStaple.findMany({ where: { userId } }),
-  ]);
+function validationError(res, parsed) {
+  return res.status(400).json({ data: null, error: { message: parsed.error.errors[0].message, code: 'VALIDATION_ERROR' } });
+}
 
-  if (!plan) {
-    return res.status(404).json({ data: null, error: { message: 'Meal plan not found', code: 'NOT_FOUND' } });
-  }
+const planNotFound = (res) => res.status(404).json({ data: null, error: { message: 'Meal plan not found', code: 'NOT_FOUND' } });
+const aiFailed = (res, result) => res.status(502).json({ data: null, error: { message: result.message, code: result.code } });
 
-  const existingMeals = plan.plannedMeals
-    .filter((m) => m.recipe)
-    .map((m) => m.recipe.name);
-
-  const activeProfiles = profiles.map((p) => ({
-    name: p.name,
-    age: p.age,
-    dietaryNotes: p.dietaryNotes,
-    foodDislikes: p.foodDislikes,
-    calorieTarget: p.calorieTarget,
-  }));
-
-  const context = {
-    activeProfiles,
-    weeklyBudget: settings?.weeklyBudget ?? 12000,
-    existingMeals,
-    pantryStaples: staples.map((s) => s.name),
-    nutritionGoals: {
-      calorieTarget: profiles.reduce((sum, p) => sum + (p.calorieTarget ?? 0), 0) || null,
-      proteinPct: 25,
-      carbsPct: 50,
-      fatPct: 25,
+/** Save a generated recipe to the user's library (source AI). */
+function saveAiRecipe(userId, recipe, mealType, servings) {
+  return prisma.recipe.create({
+    data: {
+      userId,
+      source: 'AI',
+      name: recipe.name,
+      description: recipe.description,
+      mealType,
+      servings,
+      prepTimeMinutes: recipe.prepTimeMinutes,
+      calories: recipe.estimatedCalories,
+      proteinG: recipe.estimatedProteinG,
+      carbsG: recipe.estimatedCarbsG,
+      fatG: recipe.estimatedFatG,
+      costPerServing: recipe.estimatedCostPerServing,
+      isKidFriendly: recipe.isKidFriendly,
+      tags: recipe.cuisine ? [recipe.cuisine.toLowerCase()] : [],
+      instructions: recipe.instructions,
+      ingredients: { create: recipe.ingredients },
     },
-  };
+  });
+}
 
-  const result = await suggestMeals(context, settings);
-  if (result?.error) {
-    return res.status(502).json({ data: null, error: { message: result.message, code: result.code } });
+function assignSlot(mealPlanId, dayOfWeek, mealType, recipeId) {
+  return prisma.plannedMeal.upsert({
+    where: { mealPlanId_dayOfWeek_mealType: { mealPlanId, dayOfWeek, mealType } },
+    update: { recipeId },
+    create: { mealPlanId, dayOfWeek, mealType, recipeId },
+  });
+}
+
+// POST /api/mealplans/:id/ai-fill-day  { dayOfWeek, avoid?: string[] }
+// Plans the day's EMPTY breakfast/lunch/dinner slots, saves the recipes and assigns
+// them. The week planner calls this once per day so each request stays short and
+// the grid fills in as it goes.
+aiRouter.post('/mealplans/:id/ai-fill-day', limits.ai, asyncHandler(async (req, res) => {
+  const parsed = z.object({
+    dayOfWeek: DAY_ENUM,
+    avoid: z.array(z.string().max(200)).max(40).default([]),
+  }).safeParse(req.body);
+  if (!parsed.success) return validationError(res, parsed);
+  const { dayOfWeek, avoid } = parsed.data;
+
+  const mealPlanId = parseInt(req.params.id);
+  const loaded = await loadPlanContext(req.user, mealPlanId);
+  if (!loaded) return planNotFound(res);
+  const { plan, ctx, settings, eatersFor } = loaded;
+
+  const filled = new Set(plan.plannedMeals.filter((m) => m.dayOfWeek === dayOfWeek && m.recipeId).map((m) => m.mealType));
+  const mealTypes = SLOT_ENUM.options.filter((t) => !filled.has(t));
+  if (!mealTypes.length) return res.json({ data: { dayOfWeek, meals: [] }, error: null });
+
+  const eaters = eatersFor(dayOfWeek);
+  ctx.weekMeals = [...new Set([...ctx.weekMeals, ...avoid])];
+  const result = await planDay(ctx, { dayOfWeek, mealTypes, eaters }, settings);
+  if (result?.error) return aiFailed(res, result);
+  if (!result.length) return aiFailed(res, { code: 'OLLAMA_EMPTY', message: 'The AI returned no meals — try again' });
+
+  const meals = [];
+  for (const meal of result) {
+    const recipe = await saveAiRecipe(req.user.userId, meal, meal.mealType, eaters.length);
+    await assignSlot(mealPlanId, dayOfWeek, meal.mealType, recipe.id);
+    meals.push({ mealType: meal.mealType, recipeId: recipe.id, name: recipe.name });
   }
+  res.json({ data: { dayOfWeek, meals }, error: null });
+}));
+
+// POST /api/mealplans/:id/ai-suggest-slot  { dayOfWeek, mealType, request? }
+// Quick ideas (no ingredients yet) for one slot.
+aiRouter.post('/mealplans/:id/ai-suggest-slot', limits.ai, asyncHandler(async (req, res) => {
+  const parsed = z.object({
+    dayOfWeek: DAY_ENUM,
+    mealType: z.enum(['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK']),
+    request: z.string().trim().max(300).optional(),
+    exclude: z.array(z.string().max(200)).max(40).default([]),
+  }).safeParse(req.body);
+  if (!parsed.success) return validationError(res, parsed);
+  const { dayOfWeek, mealType, request, exclude } = parsed.data;
+
+  const loaded = await loadPlanContext(req.user, parseInt(req.params.id));
+  if (!loaded) return planNotFound(res);
+  const { ctx, settings, eatersFor } = loaded;
+  ctx.weekMeals = [...new Set([...ctx.weekMeals, ...exclude])];
+
+  const result = await suggestIdeas(ctx, { dayOfWeek, mealType, eaters: eatersFor(dayOfWeek), request }, settings);
+  if (result?.error) return aiFailed(res, result);
   res.json({ data: result, error: null });
 }));
 
-// POST /api/mealplans/:id/ai-suggest-slot
-aiRouter.post('/mealplans/:id/ai-suggest-slot', limits.ai, asyncHandler(async (req, res) => {
-  const mealPlanId = parseInt(req.params.id);
-  const userId = req.user.userId;
-
-  const slotSchema = z.object({
-    dayOfWeek: z.enum(['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']),
+// POST /api/mealplans/:id/ai-expand  { dayOfWeek, mealType, idea, assign }
+// Writes the full recipe for a chosen idea, saves it, and optionally assigns it.
+aiRouter.post('/mealplans/:id/ai-expand', limits.ai, asyncHandler(async (req, res) => {
+  const parsed = z.object({
+    dayOfWeek: DAY_ENUM,
     mealType: z.enum(['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK']),
-  });
-
-  const parsed = slotSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({
-      data: null,
-      error: { message: parsed.error.errors[0].message, code: 'VALIDATION_ERROR' },
-    });
-  }
-
-  const { dayOfWeek, mealType } = parsed.data;
-
-  const [plan, settings, profiles, staples] = await Promise.all([
-    prisma.mealPlan.findFirst({
-      where: { id: mealPlanId, userId },
-      include: { plannedMeals: { include: { recipe: true } }, dayConfigs: true },
+    assign: z.boolean().default(true),
+    idea: z.object({
+      name: z.string().trim().min(1).max(200),
+      description: z.string().max(500).nullable().optional(),
+      cuisine: z.string().max(50).nullable().optional(),
+      prepTimeMinutes: z.number().nullable().optional(),
+      estimatedCalories: z.number().nullable().optional(),
+      estimatedProteinG: z.number().nullable().optional(),
+      estimatedCarbsG: z.number().nullable().optional(),
+      estimatedFatG: z.number().nullable().optional(),
+      estimatedCostPerServing: z.number().nullable().optional(),
+      isKidFriendly: z.boolean().optional(),
     }),
-    getUserSettings(userId),
-    prisma.profile.findMany({ where: { userId } }),
-    prisma.pantryStaple.findMany({ where: { userId } }),
-  ]);
+  }).safeParse(req.body);
+  if (!parsed.success) return validationError(res, parsed);
+  const { dayOfWeek, mealType, idea, assign } = parsed.data;
 
-  if (!plan) {
-    return res.status(404).json({ data: null, error: { message: 'Meal plan not found', code: 'NOT_FOUND' } });
-  }
+  const mealPlanId = parseInt(req.params.id);
+  const loaded = await loadPlanContext(req.user, mealPlanId);
+  if (!loaded) return planNotFound(res);
+  const { ctx, settings, eatersFor } = loaded;
+  const eaters = eatersFor(dayOfWeek);
 
-  const dayConfig = plan.dayConfigs.find((dc) => dc.dayOfWeek === dayOfWeek);
-  const recipesAlreadyThisWeek = plan.plannedMeals
-    .filter((m) => m.recipe)
-    .map((m) => m.recipe.name);
+  const result = await expandIdea(ctx, { idea, mealType, eaters }, settings);
+  if (result?.error) return aiFailed(res, result);
 
-  const slotContext = {
-    dayOfWeek,
-    mealType,
-    householdMode: dayConfig?.householdMode ?? 'SOLO',
-    activeProfiles: profiles.map((p) => ({
-      name: p.name,
-      age: p.age,
-      dietaryNotes: p.dietaryNotes,
-      foodDislikes: p.foodDislikes,
-      calorieTarget: p.calorieTarget,
-    })),
-    remainingCaloriesForDay: null,
-    weeklyBudgetRemaining: settings?.weeklyBudget ?? 12000,
-    recipesAlreadyThisWeek,
-    pantryStaples: staples.map((s) => s.name),
-  };
-
-  const result = await suggestMealForSlot(slotContext, settings);
-  if (result?.error) {
-    return res.status(502).json({ data: null, error: { message: result.message, code: result.code } });
-  }
-  res.json({ data: result, error: null });
+  const recipe = await saveAiRecipe(req.user.userId, result, mealType, eaters.length);
+  if (assign) await assignSlot(mealPlanId, dayOfWeek, mealType, recipe.id);
+  res.json({ data: { recipeId: recipe.id, name: recipe.name, assigned: assign }, error: null });
 }));
 
 // POST /api/recipes/estimate-macros
@@ -199,7 +224,7 @@ aiRouter.post('/recipes/ai-suggest', limits.ai, asyncHandler(async (req, res) =>
   }
 
   const settings = await getUserSettings(req.user.userId);
-  const result = await suggestRecipesByPrompt(parsed.data.prompt, settings);
+  const result = await suggestRecipesByPrompt(parsed.data.prompt, settings, { foodPreferences: settings?.foodPreferences });
   if (result?.error) {
     return res.status(502).json({ data: null, error: { message: result.message, code: result.code } });
   }

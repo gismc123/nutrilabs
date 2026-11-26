@@ -5,7 +5,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { visibleRecipes } from '../lib/access.js';
 import { limits, safeHttpUrl } from '../lib/security.js';
-import { getFilters, searchMeals, getMeal, toSummary, mapToNutriLabsRecipe } from '../services/themealdb.js';
+import { getFilters, searchMeals, randomMeals, getMeal, toSummary, mapToNutriLabsRecipe } from '../services/themealdb.js';
 
 const router = Router();
 router.use(requireAuth, limits.external);
@@ -40,6 +40,17 @@ router.get('/filters', asyncHandler(async (req, res) => {
 router.get('/search', asyncHandler(async (req, res) => {
   const text = (v) => (typeof v === 'string' ? v.slice(0, 100) : undefined);
   const result = await searchMeals({ query: text(req.query.query), category: text(req.query.category), country: text(req.query.country) });
+  if (result.error) return sendError(res, result);
+
+  const inLibrary = await libraryIds(req.user, result.results.map((r) => r.id));
+  const results = result.results.map((r) => ({ ...r, libraryRecipeId: inLibrary.get(r.id) ?? null }));
+  res.json({ data: { results }, error: null });
+}));
+
+// GET /api/recipes/mealdb/random?category=&country=
+router.get('/random', asyncHandler(async (req, res) => {
+  const text = (v) => (typeof v === 'string' && v ? v.slice(0, 100) : undefined);
+  const result = await randomMeals({ category: text(req.query.category), country: text(req.query.country) });
   if (result.error) return sendError(res, result);
 
   const inLibrary = await libraryIds(req.user, result.results.map((r) => r.id));

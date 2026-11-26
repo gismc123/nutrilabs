@@ -1,9 +1,9 @@
 import RecipeCard from './RecipeCard.jsx';
 import EmptyState from '../ui/EmptyState.jsx';
 
-export default function RecipeGrid({ recipes, onSelect }) {
+export default function RecipeGrid({ recipes, onSelect, onDelete, empty }) {
   if (!recipes.length) {
-    return (
+    return empty ?? (
       <EmptyState
         icon="book"
         title="No recipes found"
@@ -15,7 +15,7 @@ export default function RecipeGrid({ recipes, onSelect }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {recipes.map((recipe) => (
-        <RecipeCard key={recipe.id} recipe={recipe} onClick={onSelect} />
+        <RecipeCard key={recipe.id} recipe={recipe} onClick={onSelect} onDelete={onDelete} />
       ))}
     </div>
   );

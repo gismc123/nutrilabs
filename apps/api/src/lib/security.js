@@ -74,7 +74,7 @@ export const limits = {
   passwordReset: rateLimit({ windowMs: 60 * MINUTE, max: 5 }),
   passwordResetByEmail: rateLimit({ windowMs: 60 * MINUTE, max: 3, key: (req) => (req.body?.email ? `e:${normalizeEmail(req.body.email)}` : null) }),
   // Expensive upstream calls (local LLM, USDA quota), per signed-in user.
-  ai: rateLimit({ windowMs: 10 * MINUTE, max: 30, key: (req) => `u:${req.user?.userId ?? req.ip}`, message: 'AI request limit reached — try again in a few minutes' }),
+  ai: rateLimit({ windowMs: 10 * MINUTE, max: 60, key: (req) => `u:${req.user?.userId ?? req.ip}`, message: 'AI request limit reached — try again in a few minutes' }),
   external: rateLimit({ windowMs: MINUTE, max: 60, key: (req) => `u:${req.user?.userId ?? req.ip}` }),
   // Everything else: a generous per-IP ceiling against floods.
   global: rateLimit({ windowMs: MINUTE, max: 600 }),

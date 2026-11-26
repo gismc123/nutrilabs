@@ -57,6 +57,7 @@ const settingsSchema = z.object({
   smtpFromAddress: z.string().email().max(254).or(z.literal('')).nullable().optional(),
   smtpFromName: z.string().max(100).optional(),
   appBaseUrl: httpUrl.or(z.literal('')).nullable().optional(),
+  foodPreferences: z.string().max(1000).nullable().optional(),
 }).strict();
 
 router.get('/', asyncHandler(async (req, res) => {

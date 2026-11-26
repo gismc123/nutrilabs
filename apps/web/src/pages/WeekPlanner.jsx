@@ -60,6 +60,7 @@ function WeekPlannerContent() {
         onJump={goToDate}
         mealPlanId={weekPlan?.id}
         prevMealPlanId={prevWeekPlan?.id}
+        grid={weekPlan?.grid}
       />
 
       {isLoading ? (

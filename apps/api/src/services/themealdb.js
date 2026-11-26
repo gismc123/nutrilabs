@@ -386,3 +386,40 @@ export async function testConnection() {
   if (data.error) return { connected: false, message: data.message };
   return { connected: true, message: `Connected — ${data.meals?.length ?? 0} categories available` };
 }
+
+/**
+ * A random sample of meals from a category and/or country (or from a spread of
+ * main-dish categories when neither is given). Returns { results } or an error object.
+ */
+export async function randomMeals({ category, country, count = 12 }) {
+  const paths = [];
+  if (category) paths.push(`filter.php?c=${q(category)}`);
+  if (country) paths.push(`filter.php?a=${q(country)}`);
+  if (!paths.length) {
+    for (const c of ['Chicken', 'Beef', 'Pork', 'Pasta', 'Seafood', 'Vegetarian', 'Lamb']) paths.push(`filter.php?c=${q(c)}`);
+  }
+  const lists = await Promise.all(paths.map((p) => getJson(p, 24 * HOUR)));
+  const failed = lists.find((l) => l?.error);
+  if (failed) return failed;
+
+  let pool;
+  if (category && country) {
+    // Both filters: only meals in both lists.
+    const inCountry = new Set((lists[1].meals ?? []).map((m) => m.idMeal));
+    pool = (lists[0].meals ?? []).filter((m) => inCountry.has(m.idMeal)).map((m) => ({ ...m, strCategory: category }));
+  } else if (category) {
+    pool = (lists[0].meals ?? []).map((m) => ({ ...m, strCategory: category }));
+  } else if (country) {
+    pool = lists[0].meals ?? [];
+  } else {
+    pool = lists.flatMap((l, i) => (l.meals ?? []).map((m) => ({ ...m, strCategory: paths[i].split('=')[1] })));
+  }
+
+  // Fisher–Yates, then take the first `count`.
+  const a = [...pool];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return { results: a.slice(0, count).map(toSummary) };
+}

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { IconX } from '@tabler/icons-react';
 
-export default function BottomSheet({ isOpen, onClose, title, children }) {
+export default function BottomSheet({ isOpen, onClose, title, children, wide = false }) {
   const panelRef = useRef(null);
 
   useEffect(() => {
@@ -30,12 +30,12 @@ export default function BottomSheet({ isOpen, onClose, title, children }) {
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="
+        className={`
           relative bg-white w-full outline-none
           rounded-t-2xl max-h-[90vh] overflow-y-auto
-          md:rounded-2xl md:w-full md:max-w-[480px] md:max-h-[80vh]
+          md:rounded-2xl md:w-full ${wide ? 'md:max-w-[640px] md:max-h-[85vh]' : 'md:max-w-[480px] md:max-h-[80vh]'}
           animate-in slide-in-from-bottom-4
-        "
+        `}
       >
         {/* Mobile drag handle */}
         <div className="md:hidden flex justify-center pt-3 pb-1">

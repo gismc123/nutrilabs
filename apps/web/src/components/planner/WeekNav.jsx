@@ -22,6 +22,7 @@ export default function WeekNav({
   onJump,
   mealPlanId,
   prevMealPlanId,
+  grid,
 }) {
   const dateInputRef = useRef(null);
   const queryClient = useQueryClient();
@@ -86,7 +87,7 @@ export default function WeekNav({
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
-        <AIFillWeekButton mealPlanId={mealPlanId} />
+        <AIFillWeekButton mealPlanId={mealPlanId} weekStart={weekStart} grid={grid} />
 
         {prevMealPlanId && (
           <button

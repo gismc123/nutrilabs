@@ -35,7 +35,7 @@ export default function MealSlot({ mealPlanId, dayOfWeek, mealType, plannedMeal,
                   <IconAlertTriangle size={12} />
                 </span>
               )}
-              {(recipe.source === 'SPOONACULAR' || recipe.source === 'THEMEALDB') && <Badge label="Imported" variant="info" />}
+              {['SPOONACULAR', 'THEMEALDB', 'WEB'].includes(recipe.source) && <Badge label="Imported" variant="info" />}
               {recipe.source === 'AI' && <Badge label="AI" variant="purple" />}
             </div>
           </>

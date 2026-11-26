@@ -19,6 +19,7 @@ enum RecipeSource {
   AI
   SPOONACULAR
   THEMEALDB
+  WEB
 }
 
 enum DayOfWeek {
@@ -83,6 +84,7 @@ model User {
   pantryStaples      PantryStaple[]
   pantryInventory    PantryInventoryItem[]
   passwordResetTokens PasswordResetToken[]
+  hiddenRecipes      HiddenRecipe[]
   dealListItems      DealListItem[]
 }
 
@@ -119,6 +121,8 @@ model Recipe {
   imageUrl        String?
   spoonacularId   Int?
   mealDbId        Int?
+  // Page a WEB recipe was imported from.
+  sourceUrl       String?
   // Owner. Null = shared library recipe: readable by everyone, editable by admins.
   userId          Int?
   user            User?         @relation(fields: [userId], references: [id])
@@ -127,6 +131,7 @@ model Recipe {
   ingredients     Ingredient[]
   plannedMeals    PlannedMeal[]
   plannedSides    PlannedMealSide[]
+  hiddenBy        HiddenRecipe[]
 
   @@unique([userId, spoonacularId])
   @@unique([userId, mealDbId])
@@ -268,6 +273,7 @@ model AppSettings {
   smtpFromAddress    String?
   smtpFromName       String       @default("NutriLabs")
   appBaseUrl         String?
+  foodPreferences    String?
   user               User         @relation(fields: [userId], references: [id])
 }
 
@@ -354,6 +360,18 @@ model FoodMatch {
   updatedAt      DateTime @updatedAt
 
   @@id([key, userId])
+}
+
+// A shared library recipe one user removed from their library (others still see it).
+model HiddenRecipe {
+  userId    Int
+  recipeId  Int
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, recipeId])
+  @@index([recipeId])
 }
 
 // ---- KrogerDeals (apps/api/src/deals) ----------------------------------------

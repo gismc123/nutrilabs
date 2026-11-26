@@ -42,12 +42,16 @@ export const getRecipe = (id) => api.get(`/recipes/${id}`);
 export const createRecipe = (data) => api.post('/recipes', data);
 export const updateRecipe = (id, data) => api.put(`/recipes/${id}`, data);
 export const deleteRecipe = (id) => api.delete(`/recipes/${id}`);
+export const hideRecipe = (id) => api.post(`/recipes/${id}/hide`);
+export const unhideRecipe = (id) => api.delete(`/recipes/${id}/hide`);
 export const searchExternalRecipes = (params) => api.get('/recipes/search/external', { params });
 export const getExternalRecipe = (spoonacularId) => api.get(`/recipes/search/external/${spoonacularId}`);
 export const importRecipe = (spoonacularId) => api.post(`/recipes/import/${spoonacularId}`);
 export const getMealDbFilters = () => api.get('/recipes/mealdb/filters');
 export const searchMealDb = (params) => api.get('/recipes/mealdb/search', { params });
+export const randomMealDb = (params) => api.get('/recipes/mealdb/random', { params });
 export const getMealDbRecipe = (mealDbId) => api.get(`/recipes/mealdb/${mealDbId}`);
+export const previewWebRecipe = (data) => api.post('/recipes/web/preview', data, { timeout: 150_000 });
 export const importMealDbRecipe = (mealDbId, data) => api.post(`/recipes/mealdb/${mealDbId}/import`, data);
 
 // ── Meal Plans ────────────────────────────────────────────────────────────────
@@ -75,7 +79,8 @@ export const getOllamaModels = () => api.get('/ollama/models');
 export const testOllamaConnection = () => api.post('/ollama/test');
 
 // ── AI ────────────────────────────────────────────────────────────────────────
-export const aiSuggestMealPlan = (id, data) => api.post(`/mealplans/${id}/ai-suggest`, data);
+export const aiFillDay = (id, data) => api.post(`/mealplans/${id}/ai-fill-day`, data);
+export const aiExpandIdea = (id, data) => api.post(`/mealplans/${id}/ai-expand`, data);
 export const aiSuggestSlot = (id, data) => api.post(`/mealplans/${id}/ai-suggest-slot`, data);
 export const estimateMacros = (data) => api.post('/recipes/estimate-macros', data);
 export const aiSuggestRecipes = (prompt) => api.post('/recipes/ai-suggest', { prompt });

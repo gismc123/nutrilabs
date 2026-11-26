@@ -11,6 +11,7 @@ import profilesRouter from './routes/profiles.js';
 import recipesRouter from './routes/recipes.js';
 import recipesExternalRouter from './routes/recipes.external.js';
 import recipesMealDbRouter from './routes/recipes.mealdb.js';
+import recipesWebRouter from './routes/recipes.web.js';
 import mealplansRouter from './routes/mealplans.js';
 import settingsRouter from './routes/settings.js';
 import ollamaRouter, { aiRouter } from './routes/ollama.js';
@@ -66,6 +67,7 @@ app.use('/api', authRouter);
 app.use('/api/account', accountRouter);
 app.use('/api/profiles', profilesRouter);
 app.use('/api/recipes/mealdb', recipesMealDbRouter);
+app.use('/api/recipes/web', recipesWebRouter);
 // Before recipesRouter: its GET /:id would otherwise answer /spoonacular-quota.
 app.use('/api/recipes', recipesExternalRouter);
 app.use('/api/recipes', recipesRouter);
