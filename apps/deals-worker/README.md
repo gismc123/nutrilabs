@@ -18,7 +18,7 @@ reads your meal plan's grocery list directly. The pieces:
 ```
  phone ──► Cloudflare tunnel ──► :1042 web (nginx) ──► api :3001 ─► /api/deals
                                    (404 for /api/deals/internal)      ▲
- desktop display :0 ◄── deals-worker (headed Chromium, on demand) ────┘ internal, token
+ screen :0 or virtual ◄── deals-worker (headed Chromium, on demand) ──┘ internal, token
  Kroger Products API ◄── api (nightly price sync, official free API)
 ```
 
@@ -26,8 +26,9 @@ reads your meal plan's grocery list directly. The pieces:
   NutriLabs uses): regular price, sale price, and sale end date. Synced nightly at
   4:30 for about 120 staple searches, items people searched for, and every user's
   meal plan grocery items, at each store users picked (up to `DEALS_MAX_SYNC_STORES`).
-- **Coupons** come from Kroger's own coupon page, read by the worker in a real visible
-  Chromium window (Kroger blocks headless browsers). The public coupon list loads
+- **Coupons** come from Kroger's own coupon page, read by the worker in a real
+  (not headless) Chromium window, because Kroger blocks headless browsers. See
+  "Which screen the worker uses" below. The public coupon list loads
   without signing in, so no Kroger login is needed. Signing in is optional and only
   adds account-only offers and clip status.
 - **Matching**: Kroger's coupon data has no product codes, so coupons are linked to
@@ -65,7 +66,7 @@ apps/deals-worker/scripts/run-worker.sh sync
 
 | Job | When | How |
 |---|---|---|
-| Coupons | 3:45 nightly (systemd user timer) | `run-worker.sh sync` opens Chromium on the desktop, reads every active coupon (about 17 paced requests), posts them to the API, which parses, upserts, expires missing ones, and relinks |
+| Coupons | 3:45 nightly (systemd user timer) | `run-worker.sh sync` opens Chromium (desktop screen or virtual), reads every active coupon (about 17 paced requests), posts them to the API, which parses, upserts, expires missing ones, and relinks |
 | Prices | 4:30 nightly (inside the API) | Official API searches, capped at `KROGER_DAILY_PRODUCT_BUDGET` calls a day |
 
 Install the coupon timer (writes to `~/.config/systemd/user` and your crontab for log
@@ -75,10 +76,27 @@ rotation, so read the script first):
 apps/deals-worker/scripts/install-timer.sh     # remove with: install-timer.sh --remove
 ```
 
-**MagicMirror.** The worker needs the screen. If the MagicMirror Firefox kiosk is open,
-`run-worker.sh` closes it for the minute the sync takes, and a shell trap reopens it on
-every exit path, including failures. If the kiosk was not open, it is left alone. Runs
-are locked so two never overlap.
+### Which screen the worker uses
+
+`run-worker.sh` checks before every run (`DEALS_DISPLAY_MODE=auto`, the default):
+
+| Situation | Window is drawn on |
+|---|---|
+| A monitor is plugged in and you are logged in to the desktop | the desktop screen (`:0`) |
+| No monitor detected (unplugged, or the TV dropped the signal) | a private virtual screen (Xvfb) inside the worker container |
+| Nobody logged in, for example after a reboot | the virtual screen |
+
+The monitor check asks GNOME for its monitor list, because the NVIDIA driver leaves
+`/sys/class/drm/*/status` at "disconnected". The virtual screen is still a full,
+non-headless browser, only drawn off screen, so nothing on the desktop changes.
+Set `DEALS_DISPLAY_MODE=screen` or `virtual` in the root `.env` to force one.
+`login` always needs the real screen, since you have to see the window to type.
+
+**MagicMirror.** Only in desktop-screen mode: if the MagicMirror Firefox kiosk is open
+on this server's screen, `run-worker.sh` closes it for the minute the sync takes, and
+a shell trap reopens it on every exit path, including failures. If the kiosk is not
+open, or the run uses the virtual screen, MagicMirror is left alone. MagicMirror
+shown on other devices is never touched. Runs are locked so two never overlap.
 
 Check health any time: `apps/deals-worker/scripts/healthcheck.sh`. Logs:
 `~/.local/state/nutrilabs-deals/`.

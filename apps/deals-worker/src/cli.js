@@ -88,12 +88,27 @@ async function cmdSync() {
     const byId = new Map();
     let all = null;
     for (const f of filters) {
-      log(`Reading ${f}`);
-      const r = await listAll(page, atlas.headers, f, log);
-      report.pages += r.pages;
-      for (const c of r.coupons) byId.set(String(c.id), c);
-      if (!all) all = r;
-      else if (r.error) all.error = all.error || r.error;
+      // Kroger's paging order is not stable between requests: one pass can
+      // return some coupons twice and skip others. The first page reports how
+      // many exist, so re-read and merge by id until every one is seen.
+      let expected = null;
+      for (let pass = 1; pass <= 4; pass++) {
+        log(`Reading ${f}${pass > 1 ? ` (pass ${pass}, have ${byId.size} of ${expected})` : ''}`);
+        const r = await listAll(page, atlas.headers, f, log);
+        report.pages += r.pages;
+        for (const c of r.coupons) byId.set(String(c.id), c);
+        if (!all) all = r;
+        else if (r.error) all.error = all.error || r.error;
+        if (r.error) break;
+        const info = r.meta?.coupons?.userSavingsInfoByType?.standard;
+        if (expected == null && info) {
+          expected = f.includes('unclipped') ? Number(info.unclippedCount) : Number(info.unclippedCount) + Number(info.clippedCount || 0);
+        }
+        if (!Number.isFinite(expected) || byId.size >= expected) break;
+      }
+      if (Number.isFinite(expected) && byId.size < expected && !all.error) {
+        all.error = `read ${byId.size} of ${expected} coupons; nothing was marked removed this run`;
+      }
     }
     all.coupons = [...byId.values()];
     report.categories = categoryOptions({ meta: all.meta }).map((o) => o.displayName || o.name || o.id || o.value).filter(Boolean);

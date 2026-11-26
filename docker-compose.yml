@@ -89,12 +89,14 @@ services:
       context: ./apps/deals-worker
     image: nutrilabs-deals-worker
     profiles: ["deals-worker"]
+    init: true
     user: "1000:1000"
     shm_size: 1gb
     depends_on:
       - api
     environment:
       DISPLAY: ${DEALS_DISPLAY:-:0}
+      DEALS_VIRTUAL_DISPLAY: ${DEALS_VIRTUAL_DISPLAY:-0}
       XAUTHORITY: /tmp/.Xauth
       DEALS_INGEST_URL: http://api:3001/api/deals
       DEALS_WORKER_TOKEN: ${DEALS_WORKER_TOKEN:-}
@@ -102,7 +104,7 @@ services:
       KROGER_DOMAIN: ${KROGER_DOMAIN:-kroger.com}
     volumes:
       - ${XAUTH_FILE:-/dev/null}:/tmp/.Xauth:ro
-      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix-host:ro
       # Browser profile and the last raw run live outside the repo.
       - ${DEALS_STATE_DIR:-/tmp/nutrilabs-deals}/browser-profile:/profile
       - ${DEALS_STATE_DIR:-/tmp/nutrilabs-deals}/state:/state
