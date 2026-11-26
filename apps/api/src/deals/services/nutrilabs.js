@@ -2,7 +2,7 @@
 // this week's and next week's meal plans, minus pantry staples. Read straight from
 // the NutriLabs tables, read-only.
 import { prisma } from '../db.js';
-import { buildGroceryList } from '../../lib/groceryEngine.js';
+import { buildGroceryList, GROCERY_MEAL_INCLUDE } from '../../lib/groceryEngine.js';
 import { getWeekStart } from '../../lib/weekPlans.js';
 
 export async function groceryItemsForUser(userId) {
@@ -12,7 +12,7 @@ export async function groceryItemsForUser(userId) {
   const [plans, staples] = await Promise.all([
     prisma.mealPlan.findMany({
       where: { userId, weekStartDate: { in: [thisWeek, nextWeek] } },
-      include: { plannedMeals: { include: { recipe: { include: { ingredients: true } } } } },
+      include: { plannedMeals: { include: GROCERY_MEAL_INCLUDE } },
     }),
     prisma.pantryStaple.findMany({ where: { userId } }),
   ]);

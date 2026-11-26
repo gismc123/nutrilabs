@@ -27,7 +27,15 @@ export function getWeekStart(date, weekStartDay) {
   return addDays(d, -diff);
 }
 
-const PLAN_INCLUDE = { dayConfigs: true, plannedMeals: { include: { recipe: true } } };
+export const PLAN_INCLUDE = {
+  dayConfigs: true,
+  plannedMeals: {
+    include: {
+      recipe: true,
+      sides: { include: { recipe: true }, orderBy: [{ position: 'asc' }, { id: 'asc' }] },
+    },
+  },
+};
 
 /** Create an empty plan for a week: day configs from the custody template, empty B/L/D slots. */
 export async function createPlanForWeek(tx, userId, weekStart) {
@@ -113,15 +121,18 @@ export async function realignMealPlans(userId, weekStartDay) {
             summary.conflicts.push({ fromPlanId: source.id, toPlanId: target.id, dayOfWeek: day, mealType: meal.mealType });
             continue;
           }
+          let targetSlot = slot;
           if (slot) {
             await tx.plannedMeal.update({ where: { id: slot.id }, data });
             Object.assign(slot, data);
           } else {
-            const createdSlot = await tx.plannedMeal.create({
+            targetSlot = await tx.plannedMeal.create({
               data: { mealPlanId: target.id, dayOfWeek: day, mealType: meal.mealType, ...data },
             });
-            target.plannedMeals.push(createdSlot);
+            target.plannedMeals.push(targetSlot);
           }
+          // Sides move with their meal.
+          await tx.plannedMealSide.updateMany({ where: { plannedMealId: meal.id }, data: { plannedMealId: targetSlot.id } });
           summary.mealsMoved++;
         }
       }

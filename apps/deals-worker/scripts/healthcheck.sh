@@ -16,6 +16,9 @@ if [ "$code" = "401" ]; then say "ok    /api/deals answers (401 signed out, as e
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:1042/api/deals/internal/health")
 if [ "$code" = "404" ]; then say "ok    worker ingest path hidden from the web (404)"; else say "FAIL  /api/deals/internal is reachable from the web ($code)"; STATUS=1; fi
 
+if systemctl --user is-active --quiet nutrilabs-deals-coupons.timer; then say "ok    coupon refresh timer active"
+else say "WARN  coupon refresh timer not active (apps/deals-worker/scripts/install-timer.sh)"; fi
+
 # Latest sync runs, read straight from the database.
 PGUSER=$(grep -m1 '^POSTGRES_USER=' .env | cut -d= -f2-)
 PGDB=$(grep -m1 '^POSTGRES_DB=' .env | cut -d= -f2-)

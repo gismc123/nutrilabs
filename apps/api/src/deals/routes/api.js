@@ -7,6 +7,7 @@ import { findStores, usageToday, krogerConfigured } from '../services/kroger.js'
 import { searchDeals, priceProduct, listDeals, clearDealCache } from '../services/deals.js';
 import { freshness, startPriceSync, priceSyncRunning } from '../services/priceSync.js';
 import { relinkAll } from '../services/matcher.js';
+import { refreshStatus, scheduleRefresh, cancelRefresh } from '../services/refresh.js';
 import { groceryItemsForUser } from '../services/nutrilabs.js';
 import { productPhrase } from '../services/matcher.js';
 import { tokens, singular, stems } from '../lib/text.js';
@@ -157,6 +158,26 @@ api.post('/sync/prices', asyncHandler(async (req, res) => {
   const already = priceSyncRunning();
   startPriceSync('manual').then(clearDealCache);
   ok(res, { started: !already, running: true });
+}));
+
+// ---- coupon refresh schedule -----------------------------------------------------
+
+api.get('/refresh', asyncHandler(async (req, res) => {
+  ok(res, { ...(await refreshStatus()), isAdmin: Boolean(req.user.isAdmin) });
+}));
+
+const refreshBody = z.object({ runAt: z.string().datetime({ offset: true }).nullish() });
+
+api.post('/refresh', asyncHandler(async (req, res) => {
+  adminOnly(req);
+  const { runAt } = refreshBody.parse(req.body || {});
+  const r = await scheduleRefresh({ runAt, userId: req.user.userId });
+  ok(res, { id: r.id, runAt: r.runAt });
+}));
+
+api.delete('/refresh/:id', asyncHandler(async (req, res) => {
+  adminOnly(req);
+  ok(res, await cancelRefresh(z.coerce.number().int().positive().parse(req.params.id)));
 }));
 
 api.post('/sync/relink', asyncHandler(async (req, res) => {

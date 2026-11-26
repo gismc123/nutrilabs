@@ -9,6 +9,7 @@ import { ingestCouponRun, reparseAll } from '../services/coupons.js';
 import { afterCouponRun } from '../services/priceSync.js';
 import { clearDealCache } from '../services/deals.js';
 import { prisma } from '../db.js';
+import { claimRefresh, finishRefresh } from '../services/refresh.js';
 
 export const internal = Router();
 
@@ -38,4 +39,15 @@ internal.post('/reparse', asyncHandler(async (req, res) => {
   const n = await reparseAll();
   clearDealCache();
   ok(res, { reparsed: n });
+}));
+
+// Host timer, every minute: should the coupon worker run now?
+internal.post('/refresh/claim', asyncHandler(async (req, res) => {
+  ok(res, await claimRefresh());
+}));
+
+internal.post('/refresh/:id/finish', express.json({ limit: '2kb' }), asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) throw new HttpError(400, 'Bad id', 'INVALID');
+  ok(res, await finishRefresh(id, req.body?.exitCode ?? req.query.exitCode));
 }));

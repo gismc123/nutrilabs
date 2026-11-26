@@ -4,7 +4,7 @@ import prisma from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { recipesVisible } from '../lib/access.js';
-import { DAYS, getWeekStart, createPlanForWeek } from '../lib/weekPlans.js';
+import { DAYS, getWeekStart, createPlanForWeek, PLAN_INCLUDE } from '../lib/weekPlans.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -26,20 +26,26 @@ function buildGrid(dayConfigs, plannedMeals) {
         eaten: pm.eaten,
         eatenAt: pm.eatenAt,
         recipe: pm.recipe ?? null,
+        sides: (pm.sides ?? []).map(sideView),
       };
     }
   }
   return grid;
 }
 
+function sideView(sd) {
+  return {
+    id: sd.id,
+    recipeId: sd.recipeId,
+    name: sd.recipe?.name ?? sd.name,
+    recipe: sd.recipe
+      ? { id: sd.recipe.id, name: sd.recipe.name, imageUrl: sd.recipe.imageUrl, calories: sd.recipe.calories, costPerServing: sd.recipe.costPerServing }
+      : null,
+  };
+}
+
 async function getFullPlan(id) {
-  return prisma.mealPlan.findUnique({
-    where: { id },
-    include: {
-      dayConfigs: true,
-      plannedMeals: { include: { recipe: true } },
-    },
-  });
+  return prisma.mealPlan.findUnique({ where: { id }, include: PLAN_INCLUDE });
 }
 
 // GET /api/mealplans
@@ -77,7 +83,7 @@ router.get('/week/:date', asyncHandler(async (req, res) => {
 
   let plan = await prisma.mealPlan.findFirst({
     where: { userId, weekStartDate: weekStart },
-    include: { dayConfigs: true, plannedMeals: { include: { recipe: true } } },
+    include: PLAN_INCLUDE,
   });
 
   let wasCreated = false;
@@ -181,9 +187,11 @@ router.put('/:id/meals', asyncHandler(async (req, res) => {
     where: { mealPlanId_dayOfWeek_mealType: { mealPlanId, dayOfWeek, mealType } },
     update: data,
     create: { mealPlanId, dayOfWeek, mealType, ...data },
-    include: { recipe: true },
   });
-  res.json({ data: meal, error: null });
+  // Removing the main dish clears the slot, sides included. Swapping it keeps them.
+  if (recipeId === null) await prisma.plannedMealSide.deleteMany({ where: { plannedMealId: meal.id } });
+  const full = await prisma.plannedMeal.findUnique({ where: { id: meal.id }, include: PLAN_INCLUDE.plannedMeals.include });
+  res.json({ data: { ...full, sides: full.sides.map(sideView) }, error: null });
 }));
 
 // POST /api/mealplans/:id/copy-from/:sourceId
@@ -196,7 +204,7 @@ router.post('/:id/copy-from/:sourceId', asyncHandler(async (req, res) => {
     prisma.mealPlan.findFirst({ where: { id: targetId, userId } }),
     prisma.mealPlan.findFirst({
       where: { id: sourceId, userId },
-      include: { plannedMeals: { where: { recipeId: { not: null } } } },
+      include: { plannedMeals: { where: { recipeId: { not: null } }, include: { sides: true } } },
     }),
   ]);
 
@@ -204,15 +212,22 @@ router.post('/:id/copy-from/:sourceId', asyncHandler(async (req, res) => {
     return res.status(404).json({ data: null, error: { message: 'Meal plan not found', code: 'NOT_FOUND' } });
   }
 
-  await Promise.all(
-    source.plannedMeals.map((meal) =>
-      prisma.plannedMeal.upsert({
+  await prisma.$transaction(async (tx) => {
+    for (const meal of source.plannedMeals) {
+      const slot = await tx.plannedMeal.upsert({
         where: { mealPlanId_dayOfWeek_mealType: { mealPlanId: targetId, dayOfWeek: meal.dayOfWeek, mealType: meal.mealType } },
         update: { recipeId: meal.recipeId },
         create: { mealPlanId: targetId, dayOfWeek: meal.dayOfWeek, mealType: meal.mealType, recipeId: meal.recipeId },
-      })
-    )
-  );
+      });
+      // The copied meal brings its sides and replaces any the slot had.
+      await tx.plannedMealSide.deleteMany({ where: { plannedMealId: slot.id } });
+      if (meal.sides.length) {
+        await tx.plannedMealSide.createMany({
+          data: meal.sides.map((sd) => ({ plannedMealId: slot.id, recipeId: sd.recipeId, name: sd.name, position: sd.position })),
+        });
+      }
+    }
+  });
 
   const updated = await getFullPlan(targetId);
   res.json({
@@ -229,10 +244,13 @@ router.delete('/:id/meals', asyncHandler(async (req, res) => {
     return res.status(404).json({ data: null, error: { message: 'Meal plan not found', code: 'NOT_FOUND' } });
   }
 
-  await prisma.plannedMeal.updateMany({
-    where: { mealPlanId },
-    data: { recipeId: null, eaten: false, eatenAt: null },
-  });
+  await prisma.$transaction([
+    prisma.plannedMealSide.deleteMany({ where: { plannedMeal: { mealPlanId } } }),
+    prisma.plannedMeal.updateMany({
+      where: { mealPlanId },
+      data: { recipeId: null, eaten: false, eatenAt: null },
+    }),
+  ]);
 
   res.json({ data: { cleared: true }, error: null });
 }));
@@ -269,15 +287,16 @@ router.post('/:id/meals/batch', asyncHandler(async (req, res) => {
   }
 
   await Promise.all(
-    parsed.data.meals.map(({ dayOfWeek, mealType, recipeId, eaten }) => {
+    parsed.data.meals.map(async ({ dayOfWeek, mealType, recipeId, eaten }) => {
       const data = {};
       if (recipeId !== undefined) data.recipeId = recipeId;
       if (eaten !== undefined) data.eaten = eaten;
-      return prisma.plannedMeal.upsert({
+      const meal = await prisma.plannedMeal.upsert({
         where: { mealPlanId_dayOfWeek_mealType: { mealPlanId, dayOfWeek, mealType } },
         update: data,
         create: { mealPlanId, dayOfWeek, mealType, ...data },
       });
+      if (recipeId === null) await prisma.plannedMealSide.deleteMany({ where: { plannedMealId: meal.id } });
     })
   );
 
@@ -286,6 +305,65 @@ router.post('/:id/meals/batch', asyncHandler(async (req, res) => {
     data: { id: updated.id, weekStartDate: updated.weekStartDate, grid: buildGrid(updated.dayConfigs, updated.plannedMeals) },
     error: null,
   });
+}));
+
+// ── Sides ─────────────────────────────────────────────────────────────────────
+
+const MAX_SIDES = 6;
+const sideSchema = z.object({
+  dayOfWeek: z.enum(['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']),
+  mealType: z.enum(['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK']),
+  recipeId: z.number().int().positive().optional(),
+  name: z.string().trim().min(1).max(80).optional(),
+}).refine((v) => Boolean(v.recipeId) !== Boolean(v.name), { message: 'Give a recipe or a name for the side, not both' });
+
+// POST /api/mealplans/:id/sides: add a side to a planned meal
+router.post('/:id/sides', asyncHandler(async (req, res) => {
+  const mealPlanId = parseInt(req.params.id);
+  const plan = await prisma.mealPlan.findFirst({ where: { id: mealPlanId, userId: req.user.userId } });
+  if (!plan) {
+    return res.status(404).json({ data: null, error: { message: 'Meal plan not found', code: 'NOT_FOUND' } });
+  }
+  const parsed = sideSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ data: null, error: { message: parsed.error.errors[0].message, code: 'VALIDATION_ERROR' } });
+  }
+  const { dayOfWeek, mealType, recipeId, name } = parsed.data;
+  if (recipeId && !(await recipesVisible(req.user, [recipeId]))) {
+    return res.status(404).json({ data: null, error: { message: 'Recipe not found', code: 'NOT_FOUND' } });
+  }
+  const meal = await prisma.plannedMeal.findUnique({
+    where: { mealPlanId_dayOfWeek_mealType: { mealPlanId, dayOfWeek, mealType } },
+    include: { sides: true },
+  });
+  if (!meal?.recipeId) {
+    return res.status(409).json({ data: null, error: { message: 'Pick the main dish first, then add sides', code: 'NO_MAIN' } });
+  }
+  if (meal.sides.length >= MAX_SIDES) {
+    return res.status(409).json({ data: null, error: { message: `A meal can have up to ${MAX_SIDES} sides`, code: 'TOO_MANY_SIDES' } });
+  }
+  if (recipeId && (recipeId === meal.recipeId || meal.sides.some((sd) => sd.recipeId === recipeId))) {
+    return res.status(409).json({ data: null, error: { message: 'That recipe is already on this meal', code: 'DUPLICATE_SIDE' } });
+  }
+  const position = meal.sides.reduce((m, sd) => Math.max(m, sd.position), -1) + 1;
+  const side = await prisma.plannedMealSide.create({
+    data: { plannedMealId: meal.id, recipeId: recipeId ?? null, name: recipeId ? null : name, position },
+    include: { recipe: true },
+  });
+  res.status(201).json({ data: sideView(side), error: null });
+}));
+
+// DELETE /api/mealplans/:id/sides/:sideId
+router.delete('/:id/sides/:sideId', asyncHandler(async (req, res) => {
+  const mealPlanId = parseInt(req.params.id);
+  const sideId = parseInt(req.params.sideId);
+  const removed = Number.isInteger(sideId) && await prisma.plannedMealSide.deleteMany({
+    where: { id: sideId, plannedMeal: { mealPlanId, mealPlan: { userId: req.user.userId } } },
+  });
+  if (!removed?.count) {
+    return res.status(404).json({ data: null, error: { message: 'Side not found', code: 'NOT_FOUND' } });
+  }
+  res.json({ data: { deleted: true }, error: null });
 }));
 
 export default router;

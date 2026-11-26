@@ -27,6 +27,7 @@ Plan your week's meals, find free recipes, calculate accurate macros from USDA d
 - **USDA macro calculator** — per-serving calories, protein, carbs and fat worked out from the ingredient list using USDA FoodData Central, with a per-ingredient breakdown you can correct (corrections are remembered)
 
 ### Grocery & Budget
+- **Sides on any meal**: add none, one, or several sides to a planned meal, from your recipes, from TheMealDB, or as a quick item ("bagged salad"). Their ingredients go on the grocery list
 - **Auto-generated grocery lists** aggregated from your weekly meal plan — unit conversion, plural merging, pantry-staple matching, and automatic regeneration when the plan changes
 - **Real store prices** from the stores you pick: Kroger (official API) and Meijer daily, ALDI and Sam's Club weekly via a separate pricer service; seeded baseline prices fill any gaps
 - **Weekly budget meter** with spend tracking and savings vs. eating out calculation
@@ -200,6 +201,7 @@ That's it — you're running.
 | `DEALS_DISPLAY_MODE` | `auto` | Coupon browser window: `auto` uses the desktop screen when a monitor is plugged in, else a virtual screen; or force `screen` / `virtual` |
 | `KROGER_DAILY_PRODUCT_BUDGET` | `6000` | Kroger product API calls Deals may use per day (free tier: 10,000, shared) |
 | `DEALS_PRICE_SYNC_CRON` | `30 4 * * *` | Nightly Deals price sync schedule |
+| `DEALS_COUPON_SYNC_TIME` | `03:45` | Nightly Deals coupon refresh time (local, `DEALS_TZ`). The admin can also run or schedule one from Deals > Store, at most once every 4 hours |
 
 API keys (Spoonacular, USDA) can be set per user in **Settings → Connections**. Server-wide settings — the Ollama host/model, SMTP and the app base URL — can only be changed there by the **admin** (the account created by the setup wizard); the admin's values take precedence over these environment variables.
 

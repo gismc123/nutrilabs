@@ -66,8 +66,17 @@ apps/deals-worker/scripts/run-worker.sh sync
 
 | Job | When | How |
 |---|---|---|
-| Coupons | 3:45 nightly (systemd user timer) | `run-worker.sh sync` opens Chromium (desktop screen or virtual), reads every active coupon (about 17 paced requests), posts them to the API, which parses, upserts, expires missing ones, and relinks |
+| Coupons | 3:45 nightly, or when the admin runs or schedules one in **Deals > Store** | A systemd user timer runs `run-worker.sh poll` every minute. It asks NutriLabs whether a refresh is due and, if so, opens Chromium (desktop screen or virtual), reads every active coupon (about 17 paced requests), and posts them to the API, which parses, upserts, expires missing ones, and relinks |
 | Prices | 4:30 nightly (inside the API) | Official API searches, capped at `KROGER_DAILY_PRODUCT_BUDGET` calls a day |
+
+**One refresh every 4 hours.** NutriLabs decides every run, so the limit covers
+nightly and manual refreshes together. The Store tab shows the last refresh, the next
+nightly one, anything scheduled, and while a refresh runs, about how long is left (from
+the average of recent runs, usually about a minute). The nightly run is skipped when a
+refresh already ran in the 4 hours before it, or one is scheduled within 4 hours of it.
+A run that never reports back is marked failed after 20 minutes. Only the NutriLabs
+admin can run or schedule a refresh. `run-worker.sh sync` from a shell still runs one
+immediately and counts toward the limit.
 
 Install the coupon timer (writes to `~/.config/systemd/user` and your crontab for log
 rotation, so read the script first):
@@ -75,6 +84,10 @@ rotation, so read the script first):
 ```sh
 apps/deals-worker/scripts/install-timer.sh     # remove with: install-timer.sh --remove
 ```
+
+User timers only run while your account has a session. So that refreshes also run
+after a reboot with nobody logged in, turn on lingering once:
+`loginctl enable-linger $USER`.
 
 ### Which screen the worker uses
 

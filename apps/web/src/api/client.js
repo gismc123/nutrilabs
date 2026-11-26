@@ -58,6 +58,8 @@ export const updateMealPlanMeals = (id, data) => api.put(`/mealplans/${id}/meals
 export const copyMealPlan = (targetId, sourceId) => api.post(`/mealplans/${targetId}/copy-from/${sourceId}`);
 export const clearMealPlanMeals = (id) => api.delete(`/mealplans/${id}/meals`);
 export const batchUpdateMealPlanMeals = (id, meals) => api.post(`/mealplans/${id}/meals/batch`, { meals });
+export const addMealSide = (id, data) => api.post(`/mealplans/${id}/sides`, data);
+export const deleteMealSide = (id, sideId) => api.delete(`/mealplans/${id}/sides/${sideId}`);
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 export const getSettings = () => api.get('/settings');

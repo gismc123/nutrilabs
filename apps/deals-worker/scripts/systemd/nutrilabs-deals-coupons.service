@@ -1,11 +1,11 @@
 # Installed by scripts/install-timer.sh into ~/.config/systemd/user/
 [Unit]
-Description=NutriLabs Deals nightly coupon sync (headed browser on the desktop display)
+Description=NutriLabs Deals coupon refresh check (runs the coupon sync when NutriLabs says one is due)
 
 [Service]
 Type=oneshot
 WorkingDirectory=@DEALS_DIR@
-ExecStart=@DEALS_DIR@/scripts/run-worker.sh sync
+ExecStart=@DEALS_DIR@/scripts/run-worker.sh poll
 StandardOutput=append:@LOG_DIR@/worker.log
 StandardError=append:@LOG_DIR@/worker.log
 TimeoutStartSec=20min

@@ -12,6 +12,8 @@ export const config = {
   },
   priceSyncCron: env.DEALS_PRICE_SYNC_CRON || '30 4 * * *',
   tz: env.DEALS_TZ || 'America/Chicago',
+  // Nightly coupon refresh, local time in tz. The host timer polls every minute.
+  couponSyncTime: env.DEALS_COUPON_SYNC_TIME || '03:45',
   // Nightly sync covers at most this many distinct stores (users' chosen stores).
   maxSyncStores: Number(env.DEALS_MAX_SYNC_STORES || 3),
 };

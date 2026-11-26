@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
-import { buildGroceryList } from '../lib/groceryEngine.js';
+import { buildGroceryList, GROCERY_MEAL_INCLUDE } from '../lib/groceryEngine.js';
 import { getWeekStart } from '../lib/weekPlans.js';
 import { safeEqual } from '../lib/security.js';
 
@@ -34,7 +34,7 @@ router.get('/feed', requirePricerToken, asyncHandler(async (req, res) => {
     const [plans, staples] = await Promise.all([
       prisma.mealPlan.findMany({
         where: { userId: s.userId, weekStartDate: { in: [thisWeek, nextWeek] } },
-        include: { plannedMeals: { include: { recipe: { include: { ingredients: true } } } } },
+        include: { plannedMeals: { include: GROCERY_MEAL_INCLUDE } },
       }),
       prisma.pantryStaple.findMany({ where: { userId: s.userId } }),
     ]);

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Run the coupon worker on the desktop display.
-#   scripts/run-worker.sh sync       nightly read-only coupon sync (what the timer runs)
+# Run the coupon worker.
+#   scripts/run-worker.sh poll       what the every-minute timer runs: asks NutriLabs whether a
+#                                    refresh is due (nightly, or scheduled from Deals > Store)
+#                                    and runs it. Silent when there is nothing to do.
+#   scripts/run-worker.sh sync       read-only coupon sync right now (bypasses the schedule)
 #   scripts/run-worker.sh login      sign in to Kroger in a visible window (owner types the password)
 #   scripts/run-worker.sh discover   dump the live coupon API shape to samples/
 #
@@ -15,7 +18,7 @@
 set -uo pipefail
 
 CMD="${1:-sync}"
-case "$CMD" in sync|login|discover) ;; *) echo "Usage: $0 sync|login|discover" >&2; exit 1 ;; esac
+case "$CMD" in poll|sync|login|discover) ;; *) echo "Usage: $0 poll|sync|login|discover" >&2; exit 1 ;; esac
 
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(cd "$DIR/../.." && pwd)"   # NutriLabs repo root: docker-compose.yml and .env
@@ -25,7 +28,44 @@ LOCK="${XDG_RUNTIME_DIR:-/tmp}/nutrilabs-deals-worker.lock"
 log() { echo "[$(date -Is)] $*"; }
 
 exec 9>"$LOCK"
-if ! flock -n 9; then log "Another worker run is in progress. Exiting."; exit 0; fi
+if ! flock -n 9; then
+  [ "$CMD" = poll ] || log "Another worker run is in progress. Exiting."
+  exit 0
+fi
+
+# Calls the API's internal refresh endpoints from inside the api container (the
+# internal path is not reachable from outside the Docker network).
+internal_post() {
+  docker compose exec -T api sh -c \
+    'wget -qO- --post-data= --header "x-worker-token: $DEALS_WORKER_TOKEN" "http://127.0.0.1:3001/api/deals/internal/$0"' "$1" 2>/dev/null
+}
+
+REQUEST_ID=""
+if [ "$CMD" = poll ]; then
+  REPLY="$(internal_post refresh/claim)" || exit 0   # NutriLabs down: try again next minute
+  REQUEST_ID="$(printf '%s' "$REPLY" | sed -n 's/.*"run":true,"id":\([0-9][0-9]*\).*/\1/p')"
+  [ -n "$REQUEST_ID" ] || exit 0
+  KIND="$(printf '%s' "$REPLY" | sed -n 's/.*"kind":"\([a-z]*\)".*/\1/p')"
+  log "Refresh $REQUEST_ID is due (${KIND:-scheduled}). Running the coupon sync."
+  CMD=sync
+fi
+
+KIOSK_WAS_UP=0
+on_exit() {
+  local code=$?
+  if [ "$KIOSK_WAS_UP" = 1 ] && ! pgrep -f -- "--kiosk -P mirror" >/dev/null; then
+    log "Reopening the MagicMirror kiosk"
+    DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus" \
+      setsid nohup "$KIOSK" >/dev/null 2>&1 < /dev/null &
+  fi
+  # Tell NutriLabs how the scheduled refresh ended, on every exit path.
+  if [ -n "$REQUEST_ID" ]; then
+    internal_post "refresh/$REQUEST_ID/finish?exitCode=$code" >/dev/null || log "Could not report the result to NutriLabs"
+  fi
+}
+trap on_exit EXIT
+trap 'exit 130' INT TERM
 
 UID_N="$(id -u)"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID_N}"
@@ -82,18 +122,7 @@ export DEALS_STATE_DIR="$STATE_DIR"
 mkdir -p "$STATE_DIR/browser-profile" "$STATE_DIR/state" "$DIR/samples"
 chmod 700 "$STATE_DIR"
 
-KIOSK_WAS_UP=0
 if [ "$USE_SCREEN" = 1 ] && pgrep -f -- "--kiosk -P mirror" >/dev/null; then KIOSK_WAS_UP=1; fi
-
-restore() {
-  if [ "$KIOSK_WAS_UP" = 1 ] && ! pgrep -f -- "--kiosk -P mirror" >/dev/null; then
-    log "Reopening the MagicMirror kiosk"
-    DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 \
-      DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus" \
-      setsid nohup "$KIOSK" >/dev/null 2>&1 < /dev/null &
-  fi
-}
-trap restore EXIT INT TERM
 
 if [ "$KIOSK_WAS_UP" = 1 ]; then
   log "Closing the MagicMirror kiosk for the run"

@@ -1,10 +1,12 @@
 [Unit]
-Description=Run the NutriLabs Deals coupon sync every night
+Description=Check every minute whether a NutriLabs Deals coupon refresh is due
 
 [Timer]
-# Before the 4:30 price sync, so new coupons get matched the same night.
-OnCalendar=*-*-* 03:45:00
-RandomizedDelaySec=15min
+# NutriLabs decides what runs: the nightly refresh (DEALS_COUPON_SYNC_TIME, 3:45 by
+# default, before the 4:30 price sync) or one scheduled from Deals > Store. It
+# allows one refresh every 4 hours. Checks while a run is going are skipped.
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
 Persistent=false
 
 [Install]

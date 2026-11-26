@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 // Bump when the consolidation/categorization output changes so saved lists regenerate.
-export const ENGINE_VERSION = 4;
+export const ENGINE_VERSION = 5;
 
 // ── Words ─────────────────────────────────────────────────────────────────────
 
@@ -197,6 +197,8 @@ const CATEGORY_KEYWORDS = {
     'sweet potato', 'yam', 'pea', 'snap pea', 'sugar snap pea', 'brussels sprout', 'chile',
     // British names (TheMealDB imports)
     'courgette', 'aubergine', 'swede', 'beetroot',
+    // Quick sides
+    'salad', 'salad mix', 'salad kit', 'coleslaw mix', 'fruit',
   ],
   PROTEIN: [
     'chicken', 'chicken breast', 'chicken thigh', 'beef', 'ground beef', 'pork', 'turkey',
@@ -216,6 +218,7 @@ const CATEGORY_KEYWORDS = {
     'linguine', 'fettuccine', 'macaroni', 'couscous', 'barley', 'cracker', 'cereal',
     'cornmeal', 'panko', 'bagel', 'english muffin', 'pita', 'bun', 'lasagne', 'lasagna',
     'lasagne sheet', 'tagliatelle', 'rigatoni', 'fusilli',
+    'garlic bread', 'dinner roll', 'biscuit', 'texas toast', 'croissant', 'cornbread',
   ],
   CANNED: [
     'broth', 'chicken broth', 'vegetable broth', 'beef broth', 'stock', 'sauce', 'salsa',
@@ -224,7 +227,7 @@ const CATEGORY_KEYWORDS = {
     'vinegar', 'oil', 'olive oil', 'sesame oil', 'ketchup', 'mustard', 'mayonnaise',
     'mayo', 'pickle', 'olive', 'caper', 'anchovy', 'sriracha', 'hot sauce',
     'worcestershire', 'fish sauce', 'oyster sauce', 'hoisin', 'teriyaki', 'green chile',
-    'canned', 'tuna in water', 'tomato puree', 'passata',
+    'canned', 'tuna in water', 'tomato puree', 'passata', 'salad dressing', 'dressing',
   ],
   FROZEN: ['frozen', 'ice cream', 'edamame'],
   MISC: [
@@ -275,17 +278,32 @@ export function findMatchingStaple(ingredientName, pantryStaples) {
 
 // ── Plan → list ───────────────────────────────────────────────────────────────
 
+/** Prisma include for planned meals that feed the grocery list: the main recipe and its sides. */
+export const GROCERY_MEAL_INCLUDE = {
+  recipe: { include: { ingredients: true } },
+  sides: { include: { recipe: { include: { ingredients: true } } }, orderBy: [{ position: 'asc' }, { id: 'asc' }] },
+};
+
+/** Recipes on a planned meal: the main one, then each side that is a recipe. */
+function mealRecipes(pm) {
+  return [pm.recipe, ...(pm.sides ?? []).map((s) => s.recipe)].filter(Boolean);
+}
+
 export function buildGroceryList(mealPlan, pantryStaples) {
   const rawIngredients = [];
+  const add = (name, quantity, unit) => rawIngredients.push({
+    name,
+    normalizedName: normalizeIngredientName(name) || name.toLowerCase(),
+    quantity: quantity != null ? parseFloat(quantity) : null,
+    unit: unit ?? null,
+  });
   for (const pm of mealPlan.plannedMeals) {
-    if (!pm.recipe?.ingredients) continue;
-    for (const ing of pm.recipe.ingredients) {
-      rawIngredients.push({
-        name: ing.name,
-        normalizedName: normalizeIngredientName(ing.name) || ing.name.toLowerCase(),
-        quantity: ing.quantity != null ? parseFloat(ing.quantity) : null,
-        unit: ing.unit ?? null,
-      });
+    for (const recipe of mealRecipes(pm)) {
+      for (const ing of recipe.ingredients ?? []) add(ing.name, ing.quantity, ing.unit);
+    }
+    // A quick side with no recipe ("bagged salad") is one item to buy.
+    for (const side of pm.sides ?? []) {
+      if (!side.recipe && side.name?.trim()) add(side.name.trim(), null, null);
     }
   }
 
@@ -307,9 +325,9 @@ export function buildGroceryList(mealPlan, pantryStaples) {
 
 /** Planned meals whose recipe has no ingredients (they contribute nothing to the list). */
 export function mealsWithoutIngredients(mealPlan) {
-  return mealPlan.plannedMeals
-    .filter((pm) => pm.recipe && !(pm.recipe.ingredients?.length))
-    .map((pm) => ({ dayOfWeek: pm.dayOfWeek, mealType: pm.mealType, recipeId: pm.recipe.id, recipeName: pm.recipe.name }));
+  return mealPlan.plannedMeals.flatMap((pm) => mealRecipes(pm)
+    .filter((r) => !(r.ingredients?.length))
+    .map((r) => ({ dayOfWeek: pm.dayOfWeek, mealType: pm.mealType, recipeId: r.id, recipeName: r.name })));
 }
 
 /**
@@ -317,14 +335,16 @@ export function mealsWithoutIngredients(mealPlan) {
  * differs from the current plan's is stale and gets regenerated.
  */
 export function planFingerprint(mealPlan, pantryStaples) {
+  const recipeKey = (r) => [
+    r.id,
+    (r.ingredients ?? []).map((i) => `${i.name}:${i.quantity ?? ''}:${i.unit ?? ''}`).sort().join(';'),
+  ].join('|');
   const meals = mealPlan.plannedMeals
-    .filter((pm) => pm.recipe)
+    .filter((pm) => pm.recipe || pm.sides?.length)
     .map((pm) => [
-      pm.dayOfWeek, pm.mealType, pm.recipe.id,
-      (pm.recipe.ingredients ?? [])
-        .map((i) => `${i.name}:${i.quantity ?? ''}:${i.unit ?? ''}`)
-        .sort()
-        .join(';'),
+      pm.dayOfWeek, pm.mealType,
+      pm.recipe ? recipeKey(pm.recipe) : '-',
+      ...(pm.sides ?? []).map((sd) => (sd.recipe ? `side:${recipeKey(sd.recipe)}` : `side:${(sd.name ?? '').trim().toLowerCase()}`)).sort(),
     ].join('|'))
     .sort();
   const staples = [...pantryStaples].map((s) => s.toLowerCase()).sort();

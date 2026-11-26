@@ -53,6 +53,7 @@ services:
       KROGER_DAILY_PRODUCT_BUDGET: ${KROGER_DAILY_PRODUCT_BUDGET:-6000}
       DEALS_PRICE_SYNC_CRON: ${DEALS_PRICE_SYNC_CRON:-30 4 * * *}
       DEALS_TZ: ${DEALS_TZ:-America/Chicago}
+      DEALS_COUPON_SYNC_TIME: ${DEALS_COUPON_SYNC_TIME:-03:45}
     networks:
       default:
         # Unique name: the pricer also joins HeadlessX's network, which has its own "api".

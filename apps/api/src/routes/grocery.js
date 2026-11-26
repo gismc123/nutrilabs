@@ -6,6 +6,7 @@ import { asyncHandler } from '../middleware/errorHandler.js';
 import { getPricesForItems } from '../services/kroger.js';
 import {
   buildGroceryList,
+  GROCERY_MEAL_INCLUDE,
   findMatchingStaple,
   mealsWithoutIngredients,
   normalizeIngredientName,
@@ -21,9 +22,7 @@ async function loadFullMealPlan(mealPlanId, userId) {
   return prisma.mealPlan.findFirst({
     where: { id: mealPlanId, userId },
     include: {
-      plannedMeals: {
-        include: { recipe: { include: { ingredients: true } } },
-      },
+      plannedMeals: { include: GROCERY_MEAL_INCLUDE },
     },
   });
 }

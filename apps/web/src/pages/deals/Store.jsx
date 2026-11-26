@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ago } from '../../api/deals.js';
 import { ErrorBox, Freshness, Icon } from '../../components/deals/ui.jsx';
+import CouponRefreshCard from '../../components/deals/CouponRefreshCard.jsx';
 
 const STATUS_STYLE = { ok: 'text-emerald-700', partial: 'text-amber-700', running: 'text-primary-600', session_expired: 'text-amber-700', failed: 'text-red-700' };
 
@@ -13,6 +14,7 @@ export default function Store() {
   return (
     <div className="space-y-4">
       <StoreCard settings={settings} onSaved={() => { qc.invalidateQueries(); }} />
+      <CouponRefreshCard />
       <SyncCard status={status} isAdmin={!!settings.data?.isAdmin} onStarted={() => status.refetch()} />
       <HelpCard />
     </div>
@@ -113,7 +115,7 @@ function HelpCard() {
     <section className="kd-card space-y-2 p-4 text-sm text-slate-700">
       <h2 className="font-bold text-slate-900">How the numbers work</h2>
       <p>Shelf and sale prices come from Kroger's official API for your store, refreshed every night.</p>
-      <p>Digital coupons come from Kroger's coupon page, read by the server each night. This app never clips coupons. When a deal needs one, it says so: clip it in the Kroger app before checkout.</p>
+      <p>Digital coupons come from Kroger's coupon page, read by the server each night, or when the admin refreshes them above (at most once every 4 hours). This app never clips coupons. When a deal needs one, it says so: clip it in the Kroger app before checkout.</p>
       <p>A coupon only lowers a price here when it clearly names the product. Weaker matches show as "might also apply" and are never counted. All totals are estimates.</p>
     </section>
   );
