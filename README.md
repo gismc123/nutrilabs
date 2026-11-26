@@ -12,7 +12,7 @@
 
 NutriLabs is a **fully self-hosted** meal planning and grocery budgeting web app designed for a single parent managing meals across a rotating custody schedule. Run it privately on your home network, or publish it behind HTTPS for family and friends — either way there are no subscriptions and your data stays on your server.
 
-Plan your week's meals, find free recipes, calculate accurate macros from USDA data, auto-generate a categorized grocery list priced at your own stores (Kroger, Meijer, ALDI, Sam's Club), and track exactly how much you save by cooking at home. AI-powered suggestions come from a local [Ollama](https://ollama.com) instance — no OpenAI or external AI API keys required.
+Plan your week's meals, find free recipes, calculate accurate macros from USDA data, auto-generate a categorized grocery list priced at your Kroger store, and track exactly how much you save by cooking at home. AI-powered suggestions come from a local [Ollama](https://ollama.com) instance — no OpenAI or external AI API keys required.
 
 ---
 
@@ -29,7 +29,7 @@ Plan your week's meals, find free recipes, calculate accurate macros from USDA d
 ### Grocery & Budget
 - **Sides on any meal**: add none, one, or several sides to a planned meal, from your recipes, from TheMealDB, or as a quick item ("bagged salad"). Their ingredients go on the grocery list
 - **Auto-generated grocery lists** aggregated from your weekly meal plan — unit conversion, plural merging, pantry-staple matching, and automatic regeneration when the plan changes
-- **Real store prices** from the stores you pick: Kroger (official API) and Meijer daily, ALDI and Sam's Club weekly via a separate pricer service; seeded baseline prices fill any gaps
+- **Real store prices** at the Kroger store you pick (official API), refreshed nightly by a separate pricer service
 - **Weekly budget meter** with spend tracking and savings vs. eating out calculation
 - **Eating-out log** to record what you spend when you skip cooking, with a full history and weekly trend chart
 - **Kroger Deals**: sale prices and digital coupons at your Kroger store, matched to your meal plan's grocery list, with budget bundles, an aisle price check, and a deal list that says which coupons to clip (it never clips them for you). See [apps/deals-worker/README.md](apps/deals-worker/README.md)
@@ -50,7 +50,7 @@ Plan your week's meals, find free recipes, calculate accurate macros from USDA d
 - **TheMealDB** free recipe search and import (no key)
 - **Spoonacular** recipe search and import (150 req/day on the free tier)
 - **USDA FoodData Central** powering the macro calculator (free API key recommended; works on DEMO_KEY to start)
-- **Kroger Developer API** and **Meijer** for live grocery prices at your chosen store; **ALDI / Sam's Club** via [HeadlessX](https://github.com/saifyxpro/HeadlessX) (optional, self-hosted)
+- **Kroger Developer API** for live grocery prices at your chosen store
 
 ### Auth & Account Management
 - **Email + password auth** with httpOnly cookie sessions, rate-limited login, and optional closed registration
@@ -85,7 +85,7 @@ External (optional, all on your LAN or with free API keys):
   Spoonacular ▶ api.spoonacular.com       (recipe search)
   USDA    ──▶  api.nal.usda.gov           (nutrition / macro calculator)
   Open Food Facts ▶ world.openfoodfacts.org (barcode lookup, no key)
-  pricer  ──▶  Kroger API, Meijer search, HeadlessX (ALDI, Sam's Club)
+  pricer  ──▶  Kroger API
 ```
 
 Nginx inside the `web` container proxies `/api/*` requests to the `api` container, so the browser never needs to know the API hostname. The `pricer` is a separate service that reads grocery lists from the API's internal feed and caches store prices; it never shares code with the app, and its feed is not reachable through nginx.
@@ -117,7 +117,6 @@ Nginx inside the `web` container proxies `/api/*` requests to the `api` containe
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) or Docker Engine + Compose plugin
 - A machine on your network running [Ollama](https://ollama.com) (e.g. `http://192.168.1.190:11434`) — optional, for AI features
-- [HeadlessX](https://github.com/saifyxpro/HeadlessX) as its own Compose project — optional, only for ALDI and Sam's Club prices
 - [pnpm](https://pnpm.io) — only needed for local development outside Docker
 
 ---
@@ -193,7 +192,6 @@ That's it — you're running.
 | `ALLOW_REGISTRATION` | `true` | Set to `false` to stop new sign-ups on a public instance |
 | `THEMEALDB_API_KEY` | `1` (free key) | TheMealDB supporter key, if you have one |
 | `PRICER_TOKEN` | — | Shared secret between the API and the pricer service (`openssl rand -hex 32`) |
-| `HEADLESSX_API_KEY` | — | HeadlessX key, for ALDI / Sam's Club prices |
 | `PRICER_TZ` | `America/Chicago` | Time zone for the pricer's early-morning schedule |
 | `DEALS_WORKER_TOKEN` | (none) | Shared secret between the API and the Deals coupon worker (`openssl rand -hex 32`) |
 | `DEALS_STATE_DIR` | (none) | Folder outside the repo for the coupon worker's browser profile |
@@ -215,8 +213,6 @@ API keys (Spoonacular, USDA) can be set per user in **Settings → Connections**
 | [TheMealDB](https://www.themealdb.com) | Free, no key | Search ~800 recipes and import them into your library |
 | [Spoonacular](https://spoonacular.com/food-api) | 150 requests/day | Search millions of recipes and import them into your library |
 | [Kroger Developer API](https://developer.kroger.com) | Free | Real-time grocery prices from the Kroger-family store you choose |
-| Meijer | Free, no key | Prices from the Meijer store you choose (via the pricer) |
-| HeadlessX | Self-hosted, free | ALDI and Sam's Club prices (weekly, paced) |
 | [USDA FoodData Central](https://fdc.nal.usda.gov/api-guide.html) | Free key (1,000 req/hr); DEMO_KEY works to start | Macro calculator and ingredient nutrition lookup |
 | [Open Food Facts](https://world.openfoodfacts.org) | Free, no key | Barcode product lookup for pantry scanning |
 
@@ -401,7 +397,7 @@ nutrilabs/
 │   │   │   ├── deals/        # Kroger Deals: prices, coupons, matching, bundles (/api/deals)
 │   │   │   └── scripts/      # One-off maintenance scripts
 │   │   └── test/             # node --test suites
-│   ├── pricer/               # Standalone grocery price service (Kroger, Meijer, ALDI, Sam's Club)
+│   ├── pricer/               # Standalone Kroger price service for the Shop list
 │   ├── deals-worker/         # Kroger coupon reader for Deals (headed Chromium, on demand)
 │   └── web/                  # React + Vite frontend
 │       ├── src/

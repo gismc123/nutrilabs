@@ -14,19 +14,12 @@ export default function PriceStatus({ retailer, isLoading, error }) {
   if (isLoading) return <p className="text-xs text-neutral-400">Loading store prices…</p>;
   if (!retailer) return null;
 
-  const paused = retailer.pausedUntil && new Date(retailer.pausedUntil) > new Date();
   const updated = timeAgo(retailer.oldestUpdate);
   return (
     <p className="text-xs text-neutral-500">
       {retailer.store && <span className="font-medium text-neutral-700">{retailer.store} · </span>}
       {retailer.note}
       {updated && ` · oldest price ${updated}`}
-      {retailer.method === 'scrape' && retailer.pricedCount < retailer.itemCount && (
-        <span> · {retailer.itemCount - retailer.pricedCount} not priced yet</span>
-      )}
-      {paused && (
-        <span className="text-accent-600"> · paused until {new Date(retailer.pausedUntil).toLocaleDateString()} after the site blocked a request</span>
-      )}
     </p>
   );
 }

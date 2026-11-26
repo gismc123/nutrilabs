@@ -117,7 +117,6 @@ export const getSpoonacularQuota = () => api.get('/recipes/spoonacular-quota');
 // ── Test connections ──────────────────────────────────────────────────────────
 export const testKrogerConnection = () => api.post('/settings/test-kroger');
 export const getKrogerStores = (params) => api.get('/settings/kroger/stores', { params });
-export const getMeijerStores = (params) => api.get('/settings/meijer/stores', { params, timeout: 180_000 });
 export const testSpoonacularConnection = (data) => api.post('/settings/test-spoonacular', data);
 export const testMealDbConnection = () => api.post('/settings/test-mealdb');
 export const testUsdaConnection = (data) => api.post('/settings/test-usda', data);

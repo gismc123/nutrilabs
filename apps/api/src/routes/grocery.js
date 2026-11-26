@@ -303,10 +303,9 @@ router.get('/:listId/prices', asyncHandler(async (req, res) => {
   });
 }));
 
-// GET /api/grocery/:listId/store-prices?refresh=1 — prices for every item at
-// each store the price service covers: Kroger and Meijer live (from the stores
-// chosen in Settings), ALDI and Sam's Club from their last weekly update.
-// refresh=1 re-fetches Kroger/Meijer instead of using today's cached prices.
+// GET /api/grocery/:listId/store-prices?refresh=1: prices for every item at the
+// Kroger store chosen in Settings, from the price service. refresh=1 re-fetches
+// instead of using today's cached prices.
 router.get('/:listId/store-prices', asyncHandler(async (req, res) => {
   const listId = parseInt(req.params.listId);
   const userId = req.user.userId;
@@ -325,11 +324,10 @@ router.get('/:listId/store-prices', asyncHandler(async (req, res) => {
     kroger: settings?.krogerLocationId || settings?.krogerZip
       ? { id: settings.krogerLocationId, name: settings.krogerStoreName, zip: settings.krogerZip, radius: settings.krogerRadiusMiles }
       : null,
-    meijer: settings?.meijerStoreId ? { id: settings.meijerStoreId, name: settings.meijerStoreName } : null,
   };
-  const retailers = ['kroger', 'meijer', 'aldi', 'samsclub'].filter((r) => r === 'aldi' || r === 'samsclub' || stores[r]);
+  const retailers = ['kroger'].filter((r) => stores[r]);
 
-  if (!items.length) return res.json({ data: { retailers: [], prices: {} }, error: null });
+  if (!items.length || !retailers.length) return res.json({ data: { retailers: [], prices: {} }, error: null });
 
   let result;
   try {

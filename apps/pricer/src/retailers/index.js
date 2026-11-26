@@ -1,9 +1,5 @@
 import { kroger } from './kroger.js';
-import { meijer } from './meijer.js';
-import { aldi } from './aldi.js';
-import { samsclub } from './samsclub.js';
-import { disabledRetailers } from './disabled.js';
 
-export const RETAILERS = { kroger, meijer, aldi, samsclub };
-export const DISABLED = disabledRetailers;
+// Kroger only. Meijer, ALDI and Sam's Club were removed on 2026-11-26.
+export const RETAILERS = { kroger };
 export const ACTIVE_IDS = Object.keys(RETAILERS);

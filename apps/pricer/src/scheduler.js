@@ -38,7 +38,7 @@ export async function runJob(job) {
     for (const r of retailers) stores[r] = await resolveStore(r, profile.stores?.[r]).catch(() => null);
     await quoteItems({
       items: profile.items,
-      retailers: retailers.filter((r) => r === 'aldi' || r === 'samsclub' || stores[r]),
+      retailers: retailers.filter((r) => stores[r]),
       stores,
       live: Object.fromEntries(retailers.map((r) => [r, true])),
     });
@@ -69,7 +69,7 @@ async function tick() {
     } finally {
       running = false;
     }
-    return; // one job per tick keeps scraped retailers from overlapping
+    return; // one job per tick
   }
 }
 

@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { IconCheck, IconX, IconLoader } from '@tabler/icons-react';
 import {
   getOllamaModels, testOllamaConnection,
-  testKrogerConnection, testSpoonacularConnection, testUsdaConnection, testMealDbConnection, getKrogerStores, getMeijerStores,
+  testKrogerConnection, testSpoonacularConnection, testUsdaConnection, testMealDbConnection, getKrogerStores,
   getSpoonacularQuota, updateSettings, testSmtp,
 } from '../../api/client.js';
 import { useSettings } from '../../hooks/useSettings.js';
@@ -240,25 +240,6 @@ export default function ConnectionsTab() {
         </div>
         <TestButton onClick={() => krogerTestMutation.mutate()} isPending={krogerTestMutation.isPending} />
         <ConnectionStatus status={krogerStatus} />
-      </div>
-
-      <SectionDivider title="Meijer" />
-      <div className="space-y-3">
-        <p className="text-xs text-neutral-400">
-          Optional. Prices come from Meijer's product search for the store you pick. Finding stores uses the price service's
-          browser, so the first search for a ZIP can take up to a minute.
-        </p>
-        <StorePicker
-          queryKey="meijer-stores"
-          fields={{ zip: 'meijerZip', radius: 'meijerRadiusMiles', id: 'meijerStoreId', name: 'meijerStoreName' }}
-          settings={settings}
-          saveSettings={saveSettings}
-          fetchStores={getMeijerStores}
-          autoSearch={false}
-          allowAuto={false}
-          chainLabel="Meijer"
-          slowHint="looking up Meijer stores, this can take up to a minute…"
-        />
       </div>
 
       <SectionDivider title="TheMealDB" />

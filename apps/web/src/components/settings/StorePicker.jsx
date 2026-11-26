@@ -8,8 +8,8 @@ const RADIUS_OPTIONS = [5, 10, 15, 25, 50, 75, 100];
  * ({ zip, radius, id, name } setting keys).
  *
  * autoSearch: look stores up as soon as the ZIP/distance is valid (cheap APIs).
- * Otherwise a "Find stores" button triggers it (Meijer's lookup drives a real
- * browser, so it shouldn't fire on every keystroke).
+ * Otherwise a "Find stores" button triggers it (for slow lookups that shouldn't
+ * fire on every keystroke).
  * allowAuto: offer "Nearest store automatically" instead of a fixed store.
  */
 export default function StorePicker({

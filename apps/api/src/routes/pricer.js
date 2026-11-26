@@ -23,7 +23,7 @@ router.get('/feed', requirePricerToken, asyncHandler(async (req, res) => {
   const users = await prisma.appSettings.findMany({
     where: {
       user: { isActive: true },
-      OR: [{ krogerZip: { not: null } }, { krogerLocationId: { not: null } }, { meijerStoreId: { not: null } }],
+      OR: [{ krogerZip: { not: null } }, { krogerLocationId: { not: null } }],
     },
   });
 
@@ -53,7 +53,6 @@ router.get('/feed', requirePricerToken, asyncHandler(async (req, res) => {
         kroger: s.krogerLocationId || s.krogerZip
           ? { id: s.krogerLocationId, name: s.krogerStoreName, zip: s.krogerZip, radius: s.krogerRadiusMiles }
           : null,
-        meijer: s.meijerStoreId ? { id: s.meijerStoreId, name: s.meijerStoreName } : null,
       },
       items: [...items.values()],
     });

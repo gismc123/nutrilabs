@@ -1,10 +1,9 @@
 import { createServer } from 'node:http';
 import { RETAILER_POLICY, UPDATE_NOTE, config } from './config.js';
-import { headlessxHealth } from './headlessx.js';
-import { quoteItems, retailerPause } from './core/quote.js';
+import { quoteItems } from './core/quote.js';
 import { findStores, resolveStore } from './core/stores.js';
 import { getState } from './core/store.js';
-import { ACTIVE_IDS, DISABLED, RETAILERS } from './retailers/index.js';
+import { ACTIVE_IDS, RETAILERS } from './retailers/index.js';
 import { scheduleStatus, startScheduler } from './scheduler.js';
 
 function send(res, status, data, error = null) {
@@ -22,22 +21,16 @@ async function readJson(req) {
 }
 
 function retailerSummary() {
-  const state = getState();
-  return {
-    active: ACTIVE_IDS.map((id) => ({
-      id,
-      label: RETAILERS[id].label,
-      method: RETAILER_POLICY[id].method,
-      cacheDays: RETAILER_POLICY[id].cacheDays,
-      pausedUntil: retailerPause(id),
-      lastBlockReason: state.retailers[id]?.lastBlockReason ?? null,
-    })),
-    disabled: Object.values(DISABLED).map((d) => ({ id: d.id, label: d.label, reason: d.reason })),
-  };
+  return ACTIVE_IDS.map((id) => ({
+    id,
+    label: RETAILERS[id].label,
+    method: RETAILER_POLICY[id].method,
+    cacheDays: RETAILER_POLICY[id].cacheDays,
+  }));
 }
 
 const routes = {
-  'GET /health': async () => [200, { ok: true, headlessx: await headlessxHealth(), retailers: retailerSummary() }],
+  'GET /health': async () => [200, { ok: true, retailers: retailerSummary() }],
 
   'GET /status': async () => [200, { retailers: retailerSummary(), schedule: scheduleStatus(), log: getState().log.slice(-50) }],
 
@@ -50,8 +43,7 @@ const routes = {
     return [200, { retailer, zip, stores: await findStores(retailer, zip, url.searchParams.get('radius')) }];
   },
 
-  // Price items: API retailers are queried live; scraped retailers return
-  // cached prices only (they are fetched by the weekly schedule).
+  // Price items live (cached for a day; refresh re-fetches).
   'POST /quotes': async (url, req) => {
     const body = await readJson(req);
     const items = (body.items ?? []).filter((i) => i?.name).slice(0, 200);
@@ -67,7 +59,6 @@ const routes = {
       method: RETAILER_POLICY[r].method,
       store: stores[r]?.name ?? quotes[r].find((q) => q.store)?.store ?? null,
       note: UPDATE_NOTE[r],
-      pausedUntil: retailerPause(r),
     }));
     return [200, { retailers: info, quotes }];
   },

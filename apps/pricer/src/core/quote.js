@@ -1,35 +1,14 @@
-import { BLOCK_PAUSE_DAYS, RETAILER_POLICY } from '../config.js';
-import { BlockedError } from '../headlessx.js';
+import { RETAILER_POLICY } from '../config.js';
 import { RETAILERS } from '../retailers/index.js';
 import { pickBest } from './match.js';
 import { searchTerm } from './text.js';
 import { unitPrice } from './units.js';
-import { getCachedQuote, getState, logEvent, putCachedQuote, quoteKey, updateState } from './store.js';
+import { getCachedQuote, logEvent, putCachedQuote, quoteKey } from './store.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const randomBetween = ([min, max]) => min + Math.random() * (max - min);
-
-export function retailerPause(retailer) {
-  const pausedUntil = getState().retailers[retailer]?.pausedUntil;
-  return pausedUntil && new Date(pausedUntil) > new Date() ? pausedUntil : null;
-}
-
-function recordBlock(retailer, reason) {
-  const state = updateState((s) => {
-    const r = (s.retailers[retailer] ??= { blocks: [] });
-    const recent = (r.blocks ?? []).filter((at) => Date.now() - new Date(at) < 30 * DAY_MS);
-    recent.push(new Date().toISOString());
-    const days = BLOCK_PAUSE_DAYS[Math.min(recent.length - 1, BLOCK_PAUSE_DAYS.length - 1)];
-    r.blocks = recent;
-    r.pausedUntil = new Date(Date.now() + days * DAY_MS).toISOString();
-    r.lastBlockReason = reason;
-  });
-  const until = state.retailers[retailer].pausedUntil;
-  logEvent({ type: 'blocked', retailer, reason, pausedUntil: until });
-  return until;
-}
 
 function buildQuote({ item, term, retailer, storeId, storeName, product }) {
   const base = {
@@ -67,10 +46,8 @@ function withAge(quote, cacheDays) {
 /**
  * Price a list of items at one retailer.
  *
- * live: whether this call may contact the retailer at all. API retailers
- * (Kroger, Meijer) are cheap to call; scraped ones (ALDI, Sam's Club) are only
- * contacted by the weekly schedule or an explicit CLI run — everything else
- * gets the cached price with its fetchedAt timestamp.
+ * live: whether this call may contact the retailer at all. Otherwise each item
+ * gets its cached price with its fetchedAt timestamp.
  */
 export async function quoteRetailer({ retailer, items, storeId, storeName, live, force = false, limit, onProgress }) {
   const adapter = RETAILERS[retailer];
@@ -82,7 +59,6 @@ export async function quoteRetailer({ retailer, items, storeId, storeName, live,
 
   const maxLive = Math.min(limit ?? Infinity, policy.maxPerRun);
   let liveCount = 0;
-  let pausedUntil = retailerPause(retailer);
   let consecutiveErrors = 0;
   let detectedStore = storeName ?? null;
   const results = [];
@@ -91,14 +67,12 @@ export async function quoteRetailer({ retailer, items, storeId, storeName, live,
     const term = searchTerm(item.name);
     const key = quoteKey(retailer, storeId, term);
     const cached = getCachedQuote(key);
-    // force re-fetches API retailers only; scraped ones always honour the cache.
-    const fresh = cached && Date.now() - new Date(cached.fetchedAt) < policy.cacheDays * DAY_MS
-      && !(force && policy.method === 'api');
+    const fresh = cached && Date.now() - new Date(cached.fetchedAt) < policy.cacheDays * DAY_MS && !force;
 
-    const mayFetch = live && !pausedUntil && liveCount < maxLive && consecutiveErrors < 3;
+    const mayFetch = live && liveCount < maxLive && consecutiveErrors < 3;
     if (fresh || !mayFetch) {
       if (cached) results.push(withAge(cached, policy.cacheDays));
-      else results.push({ item: item.name, query: term, retailer, status: pausedUntil ? 'paused' : 'not_fetched', pausedUntil, fetchedAt: null });
+      else results.push({ item: item.name, query: term, retailer, status: 'not_fetched', fetchedAt: null });
       continue;
     }
 
@@ -115,19 +89,14 @@ export async function quoteRetailer({ retailer, items, storeId, storeName, live,
       results.push({ ...quote, cached: false, stale: false });
       consecutiveErrors = 0;
     } catch (err) {
-      if (err instanceof BlockedError) {
-        pausedUntil = recordBlock(retailer, err.reason);
-        results.push(cached ? withAge(cached, policy.cacheDays) : { item: item.name, query: term, retailer, status: 'blocked', reason: err.reason, fetchedAt: null });
-      } else {
-        consecutiveErrors++;
-        logEvent({ type: 'error', retailer, item: item.name, message: err.message });
-        results.push(cached ? withAge(cached, policy.cacheDays) : { item: item.name, query: term, retailer, status: 'error', message: err.message, fetchedAt: null });
-      }
+      consecutiveErrors++;
+      logEvent({ type: 'error', retailer, item: item.name, message: err.message });
+      results.push(cached ? withAge(cached, policy.cacheDays) : { item: item.name, query: term, retailer, status: 'error', message: err.message, fetchedAt: null });
     }
   }
 
   if (live && liveCount > 0) {
-    logEvent({ type: 'run', retailer, fetched: liveCount, items: items.length, pausedUntil: pausedUntil ?? null });
+    logEvent({ type: 'run', retailer, fetched: liveCount, items: items.length });
   }
   return results;
 }

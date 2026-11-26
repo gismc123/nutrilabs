@@ -9,8 +9,6 @@ import { safeUrl } from '../../utils/safeUrl.js';
 const STATUS_TEXT = {
   no_match: 'no match',
   not_fetched: 'not priced yet',
-  paused: 'paused',
-  blocked: 'blocked',
   error: 'error',
   no_store: 'no store set',
 };

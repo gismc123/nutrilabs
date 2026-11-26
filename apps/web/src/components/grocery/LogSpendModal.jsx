@@ -5,7 +5,7 @@ import BottomSheet from '../ui/BottomSheet.jsx';
 import { logGrocerySpend } from '../../api/client.js';
 import { formatDate } from '../../utils/dates.js';
 
-const STORES = ['Kroger', 'Meijer', 'ALDI', "Sam's Club", 'Walmart', 'Other'];
+const STORES = ['Kroger', 'Walmart', 'Other'];
 
 export default function LogSpendModal({ isOpen, onClose, listId }) {
   const queryClient = useQueryClient();

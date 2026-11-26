@@ -25,7 +25,7 @@ function miles(a, b) {
   return 3958.8 * 2 * Math.asin(Math.sqrt(h));
 }
 
-/** Stores near a ZIP, nearest first, cached for 30 days (Meijer lookups use the browser). */
+/** Stores near a ZIP, nearest first, cached for 30 days. */
 export async function findStores(retailer, zip, radiusMiles) {
   const adapter = RETAILERS[retailer];
   if (!adapter?.stores) throw new Error(`${retailer} has no store lookup`);

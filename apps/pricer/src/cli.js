@@ -3,18 +3,16 @@
 // touching NutriLabs' meal-planning code.
 //
 //   node src/cli.js fetch-list [--out list.json]            pull lists from NutriLabs' pricer feed
-//   node src/cli.js quote --list list.json [--retailers kroger,meijer,aldi,samsclub]
-//        [--kroger-store ID | --zip 42134] [--meijer-store 272] [--limit N] [--live-scrape] [--out quotes.json]
-//   node src/cli.js stores <kroger|meijer> --zip 42134 [--radius 25]
-//   node src/cli.js probe <walmart|target|dollargeneral|aldi|samsclub>
+//   node src/cli.js quote --list list.json [--kroger-store ID | --zip 42134] [--limit N] [--out quotes.json]
+//   node src/cli.js stores kroger --zip 42134 [--radius 25]
+//   node src/cli.js probe kroger [--store ID]          one live search for "milk"
 //   node src/cli.js status
 import { readFileSync, writeFileSync } from 'node:fs';
-import { RETAILER_POLICY } from './config.js';
 import { fetchFeed } from './core/feed.js';
 import { quoteItems } from './core/quote.js';
 import { findStores, resolveStore } from './core/stores.js';
 import { getState } from './core/store.js';
-import { ACTIVE_IDS, DISABLED, RETAILERS } from './retailers/index.js';
+import { ACTIVE_IDS, RETAILERS } from './retailers/index.js';
 import { scheduleStatus } from './scheduler.js';
 
 const [command, ...rest] = process.argv.slice(2);
@@ -81,18 +79,11 @@ async function main() {
       const prefs = {
         ...listStores,
         ...(flags['kroger-store'] || flags.zip ? { kroger: { id: flags['kroger-store'], zip: flags.zip, radius: Number(flags.radius ?? 25) } } : {}),
-        ...(flags['meijer-store'] ? { meijer: { id: String(flags['meijer-store']) } } : {}),
       };
       const stores = {};
       for (const r of retailers) stores[r] = await resolveStore(r, prefs[r]);
-      // Scraped retailers are only contacted with --live-scrape (still paced and capped).
-      const live = Object.fromEntries(retailers.map((r) => [r, RETAILER_POLICY[r].method === 'api' || !!flags['live-scrape']]));
+      const live = Object.fromEntries(retailers.map((r) => [r, true]));
       const limit = flags.limit ? Number(flags.limit) : undefined;
-      const scraped = retailers.filter((r) => RETAILER_POLICY[r].method === 'scrape');
-      if (flags['live-scrape'] && scraped.length) {
-        const n = Math.min(items.length, limit ?? Infinity);
-        console.log(`Live scraping ${scraped.join(', ')}: up to ${n} searches each, ${scraped.map((r) => `${RETAILER_POLICY[r].gapSec.join('–')} s apart`).join(' / ')}.`);
-      }
       const quotes = await quoteItems({
         items, retailers, stores, live, limit,
         onProgress: ({ retailer, item, n }) => process.stderr.write(`  ${retailer} #${n}: ${item}\n`),
@@ -112,10 +103,7 @@ async function main() {
     }
     case 'probe': {
       const [retailer] = positional;
-      if (DISABLED[retailer]) {
-        console.log(`${retailer}: disabled (${DISABLED[retailer].reason}). Re-testing once…`);
-        console.log(await DISABLED[retailer].probe());
-      } else if (RETAILERS[retailer]) {
+      if (RETAILERS[retailer]) {
         const res = await RETAILERS[retailer].search('milk', flags.store);
         console.log(`${retailer}: ${res.products.length} products${res.store ? ` at ${res.store}` : ''}`);
         for (const p of res.products.slice(0, 5)) console.log(`  ${money(p.price)} ${p.name}${p.size ? ` (${p.size})` : ''}`);

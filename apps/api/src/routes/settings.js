@@ -9,7 +9,6 @@ import { searchFood } from '../services/usda.js';
 import { testConnection as testMealDb } from '../services/themealdb.js';
 import { realignMealPlans } from '../lib/weekPlans.js';
 import { spoonacularKey, usdaKey } from '../lib/apiKeys.js';
-import { pricerGet } from '../lib/pricerClient.js';
 import { ADMIN_ONLY_SETTINGS, clearInstanceSettingsCache } from '../lib/instanceSettings.js';
 
 const router = Router();
@@ -47,10 +46,6 @@ const settingsSchema = z.object({
   krogerRadiusMiles: z.number().int().min(1).max(100).optional(),
   krogerLocationId: shortText.nullable().optional(),
   krogerStoreName: shortText.nullable().optional(),
-  meijerZip: z.string().regex(/^\d{5}$/).or(z.literal('')).nullable().optional(),
-  meijerRadiusMiles: z.number().int().min(1).max(100).optional(),
-  meijerStoreId: shortText.nullable().optional(),
-  meijerStoreName: shortText.nullable().optional(),
   spoonacularApiKey: shortText.nullable().optional(),
   usdaApiKey: shortText.nullable().optional(),
   dateFormat: z.string().max(20).optional(),
@@ -93,7 +88,7 @@ router.put('/', asyncHandler(async (req, res) => {
   if (updates.usdaApiKey === '') updates.usdaApiKey = null;
   // The masked placeholder coming back from the form means "unchanged".
   if (updates.smtpPassword === MASK) delete updates.smtpPassword;
-  for (const k of ['krogerZip', 'meijerZip', 'smtpFromAddress', 'appBaseUrl']) if (updates[k] === '') updates[k] = null;
+  for (const k of ['krogerZip', 'smtpFromAddress', 'appBaseUrl']) if (updates[k] === '') updates[k] = null;
 
   const previous = await prisma.appSettings.findUnique({ where: { userId: req.user.userId } });
   const s = await prisma.appSettings.update({ where: { userId: req.user.userId }, data: updates });
@@ -203,26 +198,6 @@ router.get('/kroger/stores', asyncHandler(async (req, res) => {
   res.json({ data: { zip, radius, stores }, error: null });
 }));
 
-// GET /api/settings/meijer/stores?zip=&radius= — Meijer stores, looked up by the
-// pricer service (Meijer's store API needs a real browser, so this is slow the
-// first time for a ZIP and cached afterwards).
-router.get('/meijer/stores', asyncHandler(async (req, res) => {
-  const settings = await prisma.appSettings.findUnique({ where: { userId: req.user.userId } });
-  const zip = String(req.query.zip ?? settings?.meijerZip ?? '').trim();
-  const radius = parseInt(req.query.radius) || settings?.meijerRadiusMiles || 25;
-  if (!/^\d{5}$/.test(zip)) {
-    return res.status(400).json({ data: null, error: { message: 'Enter a 5-digit ZIP code first', code: 'VALIDATION_ERROR' } });
-  }
-  try {
-    const data = await pricerGet('/stores', { retailer: 'meijer', zip, radius });
-    const stores = data.stores.map(({ id, lat, lng, ...s }) => ({ locationId: id, ...s }));
-    res.json({ data: { zip, radius, stores }, error: null });
-  } catch (err) {
-    res.status(err.status === 503 ? 503 : 502).json({ data: null, error: { message: err.message, code: 'PRICER_ERROR' } });
-  }
-}));
-
-// POST /api/settings/test-kroger
 router.post('/test-kroger', asyncHandler(async (req, res) => {
   const clientId = process.env.KROGER_CLIENT_ID;
   const clientSecret = process.env.KROGER_CLIENT_SECRET;

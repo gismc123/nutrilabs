@@ -56,12 +56,11 @@ services:
       DEALS_COUPON_SYNC_TIME: ${DEALS_COUPON_SYNC_TIME:-03:45}
     networks:
       default:
-        # Unique name: the pricer also joins HeadlessX's network, which has its own "api".
         aliases:
           - nutrilabs-api
 
-  # Standalone grocery price service (apps/pricer). Talks to NutriLabs only over
-  # HTTP, and to HeadlessX (separate compose project) over its docker network.
+  # Standalone Kroger price service for the Shop list (apps/pricer). Talks to
+  # NutriLabs only over HTTP.
   pricer:
     build:
       context: ./apps/pricer
@@ -71,16 +70,11 @@ services:
     environment:
       PRICER_TOKEN: ${PRICER_TOKEN}
       NUTRILABS_URL: http://nutrilabs-api:3001
-      HEADLESSX_URL: http://headlessx-api:8000
-      HEADLESSX_API_KEY: ${HEADLESSX_API_KEY}
       KROGER_CLIENT_ID: ${KROGER_CLIENT_ID}
       KROGER_CLIENT_SECRET: ${KROGER_CLIENT_SECRET}
       TZ: ${PRICER_TZ:-America/Chicago}
     volumes:
       - pricer_data:/data
-    networks:
-      - default
-      - headlessx
 
   # Deals coupon reader (apps/deals-worker). Never started by "up" or deploy.sh:
   # apps/deals-worker/scripts/run-worker.sh runs it on the desktop display, because
@@ -123,8 +117,3 @@ services:
 volumes:
   postgres_data:
   pricer_data:
-
-networks:
-  headlessx:
-    name: headlessx_headlessx-network
-    external: true
