@@ -66,8 +66,9 @@ app.use('/api', authRouter);
 app.use('/api/account', accountRouter);
 app.use('/api/profiles', profilesRouter);
 app.use('/api/recipes/mealdb', recipesMealDbRouter);
-app.use('/api/recipes', recipesRouter);
+// Before recipesRouter: its GET /:id would otherwise answer /spoonacular-quota.
 app.use('/api/recipes', recipesExternalRouter);
+app.use('/api/recipes', recipesRouter);
 app.use('/api/mealplans', mealplansRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/ollama', ollamaRouter);
